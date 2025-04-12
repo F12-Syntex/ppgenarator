@@ -49,7 +49,7 @@ public class SectionAProcessor {
                 }
 
                 // Save question document
-                File questionFile = new File(outputDir, String.format("question_%d.pdf", question.number));
+                File questionFile = new File(outputDir, String.format("question%d.pdf", question.number));
 
                 //if already exists then skip
                 if (questionFile.exists()) {

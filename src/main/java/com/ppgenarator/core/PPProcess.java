@@ -2,6 +2,8 @@ package com.ppgenarator.core;
 
 import java.io.File;
 
+import com.ppgenarator.ai.Categorize;
+import com.ppgenarator.config.Configuration;
 import com.ppgenarator.processor.markscheme.MarkSchemeProcessor;
 import com.ppgenarator.processor.questions.PastPaperProcessor;
 
@@ -25,8 +27,17 @@ public class PPProcess {
 
         pastPaperProcessor.process();
         markSchemeProcessor.process();
+
+
+        File output = new File(Configuration.OUTPUT_DIRECTORY, year);
+
+        System.out.println("Preparing meta data for year " + year);
+        Categorize categorize = new Categorize(output);
+        categorize.process();
+
+
         System.out.println("Finished processing year " + year);
-        System.out.println("CLOSING FROM PPProcess.java");
+
         System.exit(0);
     }
 }

@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -16,8 +17,9 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import com.ppgenarator.config.Configuration;
 
 public class MarkSchemeProcessor {
-
+    
     private File markSchemeFilePath;
+    private static final int MAX_GROUP_QUESTION = 5; // Only group questions 1-5
 
     public MarkSchemeProcessor(File markSchemeFilePath) {
         this.markSchemeFilePath = markSchemeFilePath;
@@ -36,22 +38,58 @@ public class MarkSchemeProcessor {
             File markSchemeDir = new File(outputDir, "markscheme");
             markSchemeDir.mkdirs();
             
-            // Find all questions in the document
-            Map<String, List<Integer>> questionPages = findQuestionPages(document);
+            // Find all question tables and their page numbers
+            Map<String, List<Integer>> questionPages = findQuestionTables(document);
             
-            // Extract each question to its own PDF
-            for (String questionNumber : questionPages.keySet()) {
-                List<Integer> pages = questionPages.get(questionNumber);
+            // Split into questions to group (1-5) and questions to keep separate (6+)
+            Map<String, List<Integer>> groupableQuestions = new HashMap<>();
+            Map<String, List<Integer>> individualQuestions = new HashMap<>();
+            
+            for (Map.Entry<String, List<Integer>> entry : questionPages.entrySet()) {
+                String questionNumber = entry.getKey();
+                int mainNumber = extractMainQuestionNumber(questionNumber);
                 
-                // Create filename for this question
-                String filename = "ms_" + questionNumber.replace("(", "_").replace(")", "") + ".pdf";
-                File outputFile = new File(markSchemeDir, filename);
+                if (mainNumber <= MAX_GROUP_QUESTION) {
+                    groupableQuestions.put(questionNumber, entry.getValue());
+                } else {
+                    individualQuestions.put(questionNumber, entry.getValue());
+                }
+            }
+            
+            // Process questions 1-5 (grouped)
+            Map<Integer, TreeSet<Integer>> groupedQuestions = groupSubquestions(groupableQuestions);
+            for (Map.Entry<Integer, TreeSet<Integer>> entry : groupedQuestions.entrySet()) {
+                Integer mainQuestionNumber = entry.getKey();
+                TreeSet<Integer> allPages = entry.getValue();
                 
-                // Extract all pages for this question
+                if (!allPages.isEmpty()) {
+                    File outputFile = new File(markSchemeDir, "question" + mainQuestionNumber + ".pdf");
+                    
+                    // Convert TreeSet to List for the extraction method
+                    List<Integer> pagesList = new ArrayList<>(allPages);
+                    
+                    // Extract all pages for this question and its subquestions
+                    extractPages(document, pagesList, outputFile);
+                    
+                    System.out.println("Created grouped mark scheme for question " + mainQuestionNumber + 
+                                      ": " + outputFile.getName());
+                }
+            }
+            
+            // Process question 6 and beyond (individual parts)
+            for (Map.Entry<String, List<Integer>> entry : individualQuestions.entrySet()) {
+                String questionNumber = entry.getKey();
+                List<Integer> pages = entry.getValue();
+                
+                // Format the question number for the filename (e.g., "6(a)" becomes "question6a.pdf")
+                String formattedQuestionNumber = questionNumber.replaceAll("\\(|\\)", "");
+                File outputFile = new File(markSchemeDir, "question" + formattedQuestionNumber + ".pdf");
+                
+                // Extract pages for this specific question part
                 extractPages(document, pages, outputFile);
                 
-                System.out.println("Created mark scheme file: " + outputFile.getName() + 
-                                  " with " + pages.size() + " pages");
+                System.out.println("Created individual mark scheme for question " + questionNumber + 
+                                  ": " + outputFile.getName());
             }
             
             document.close();
@@ -60,61 +98,28 @@ public class MarkSchemeProcessor {
         }
     }
     
-    private Map<String, List<Integer>> findQuestionPages(PDDocument document) throws IOException {
+    private Map<String, List<Integer>> findQuestionTables(PDDocument document) throws IOException {
         Map<String, List<Integer>> questionPages = new HashMap<>();
-        PDFTextStripper stripper = new PDFTextStripper();
         
-        // Process each page to find questions
+        // Process each page to find question tables
         for (int pageNum = 0; pageNum < document.getNumberOfPages(); pageNum++) {
-            stripper.setStartPage(pageNum + 1);
-            stripper.setEndPage(pageNum + 1);
-            String pageText = stripper.getText(document);
+            String pageText = getTextFromPage(document, pageNum);
             
-            // Find all question numbers on this page (format: 1(a), 1(b), etc.)
-            Pattern questionPattern = Pattern.compile("\\b(\\d+\\([a-z]\\))\\b");
-            Matcher matcher = questionPattern.matcher(pageText);
+            // Look for tables with question numbers
+            Pattern tablePattern = Pattern.compile("Question\\s+Number|\\d+\\s*\\([a-z]\\)");
+            Matcher tableMatcher = tablePattern.matcher(pageText);
             
-            while (matcher.find()) {
-                String questionNumber = matcher.group(1);
+            // If we find a table structure
+            if (tableMatcher.find()) {
+                // Find specific question numbers within this page
+                Pattern questionPattern = Pattern.compile("(\\d+)\\s*\\(([a-z])\\)");
+                Matcher questionMatcher = questionPattern.matcher(pageText);
                 
-                // Ensure list exists for this question
-                if (!questionPages.containsKey(questionNumber)) {
-                    questionPages.put(questionNumber, new ArrayList<>());
-                }
-                
-                // Add this page if not already added
-                if (!questionPages.get(questionNumber).contains(pageNum)) {
-                    questionPages.get(questionNumber).add(pageNum);
-                }
-            }
-            
-            // Also check for tables with Question Number column
-            if (pageText.contains("Question Number") && pageText.contains("Mark")) {
-                // Find which question this table belongs to by looking for text before it
-                String[] lines = pageText.split("\\r?\\n");
-                String currentQuestion = null;
-                
-                for (String line : lines) {
-                    // Check for a question number
-                    Matcher qMatcher = questionPattern.matcher(line);
-                    if (qMatcher.find()) {
-                        currentQuestion = qMatcher.group(1);
-                    }
+                while (questionMatcher.find()) {
+                    String questionNumber = questionMatcher.group(1) + "(" + questionMatcher.group(2) + ")";
                     
-                    // If we find a table header after finding a question number
-                    if (currentQuestion != null && line.contains("Question Number") && line.contains("Mark")) {
-                        // Add this page to the question if not already added
-                        if (!questionPages.containsKey(currentQuestion)) {
-                            questionPages.put(currentQuestion, new ArrayList<>());
-                        }
-                        
-                        if (!questionPages.get(currentQuestion).contains(pageNum)) {
-                            questionPages.get(currentQuestion).add(pageNum);
-                        }
-                        
-                        // Reset current question after finding a table
-                        currentQuestion = null;
-                    }
+                    // Add this page to the list for this question
+                    questionPages.computeIfAbsent(questionNumber, k -> new ArrayList<>()).add(pageNum);
                 }
             }
         }
@@ -122,18 +127,57 @@ public class MarkSchemeProcessor {
         return questionPages;
     }
     
-    private void extractPages(PDDocument document, List<Integer> pages, File outputFile) throws IOException {
+    private int extractMainQuestionNumber(String questionNumber) {
+        Pattern mainNumberPattern = Pattern.compile("(\\d+)\\([a-z]\\)");
+        Matcher matcher = mainNumberPattern.matcher(questionNumber);
+        
+        if (matcher.find()) {
+            return Integer.parseInt(matcher.group(1));
+        }
+        return 0; // Default case, shouldn't happen with valid question numbers
+    }
+    
+    private Map<Integer, TreeSet<Integer>> groupSubquestions(Map<String, List<Integer>> questionPages) {
+        Map<Integer, TreeSet<Integer>> groupedQuestions = new HashMap<>();
+        
+        // Process each question and group by main question number
+        for (Map.Entry<String, List<Integer>> entry : questionPages.entrySet()) {
+            String questionNumber = entry.getKey();
+            List<Integer> pages = entry.getValue();
+            
+            int mainNumber = extractMainQuestionNumber(questionNumber);
+            if (mainNumber > 0) {
+                // Add all pages to the main question's set
+                TreeSet<Integer> pagesSet = groupedQuestions.computeIfAbsent(mainNumber, k -> new TreeSet<>());
+                pagesSet.addAll(pages);
+            }
+        }
+        
+        return groupedQuestions;
+    }
+    
+    private String getTextFromPage(PDDocument document, int pageNum) throws IOException {
+        PDFTextStripper stripper = new PDFTextStripper();
+        stripper.setStartPage(pageNum + 1);
+        stripper.setEndPage(pageNum + 1);
+        return stripper.getText(document);
+    }
+    
+    private void extractPages(PDDocument sourceDoc, List<Integer> pageNumbers, File outputFile) throws IOException {
         PDDocument newDoc = new PDDocument();
         
-        // Sort the pages in ascending order
-        pages.sort(Integer::compare);
-        
-        // Copy each page
-        for (int pageNum : pages) {
-            PDPage page = document.getPage(pageNum);
+        // Copy the specified pages, ensuring no duplicates
+        for (int pageNum : pageNumbers) {
+            PDPage page = sourceDoc.getPage(pageNum);
             newDoc.addPage(newDoc.importPage(page));
         }
         
+        
+        if(outputFile.exists()) {
+            newDoc.close();
+            return;
+        }
+
         // Save the new document
         newDoc.save(outputFile);
         newDoc.close();
