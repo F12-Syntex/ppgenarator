@@ -2,6 +2,8 @@ package com.ppgenarator.core;
 
 import java.io.File;
 
+import org.json.JSONException;
+
 import com.ppgenarator.ai.Categorize;
 import com.ppgenarator.config.Configuration;
 import com.ppgenarator.processor.markscheme.MarkSchemeProcessor;
@@ -18,7 +20,6 @@ public class PPProcess {
     }
 
     public void process() {
-
         String year = questionPaper.getParentFile().getParentFile().getName();
 
         System.out.println("Processing year " + year);
@@ -33,11 +34,14 @@ public class PPProcess {
 
         System.out.println("Preparing meta data for year " + year);
         Categorize categorize = new Categorize(output);
-        categorize.process();
+
+        try {
+            categorize.process();
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
 
 
         System.out.println("Finished processing year " + year);
-
-        System.exit(0);
     }
 }

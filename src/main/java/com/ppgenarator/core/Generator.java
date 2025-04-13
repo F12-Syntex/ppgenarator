@@ -19,6 +19,10 @@ public class Generator {
             yearProcessor.process();
         }
 
+        //generate topic questions
+        QuestionGeneration questionGeneration = new QuestionGeneration();
+        questionGeneration.process();
+
 
     }
 }
