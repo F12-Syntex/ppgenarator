@@ -332,86 +332,30 @@ public class Categorize {
                             "Provide your answer as a JSON array of strings with only the topic names: \n\n%s" +
                             "here are the list of topics %s YOU MAY ONLY USE THE TOPICS IN THE LIST, AND ONLY USE ONE\n",
                     board, questionText, String.join(", ", topics));
-
-            JSONObject requestBody = new JSONObject();
-            requestBody.put("model", OPENAI_MODEL);
-
-            JSONArray messagesArray = new JSONArray();
-            JSONObject messageObject = new JSONObject();
-            messageObject.put("role", "user");
-            messageObject.put("content", prompt);
-            messagesArray.put(messageObject);
-
-            requestBody.put("messages", messagesArray);
-            requestBody.put("temperature", 0.3);
-
-            RequestBody body = RequestBody.create(requestBody.toString(), JSON);
-            Request request = new Request.Builder()
-                    .url(OPENAI_API_URL)
-                    .addHeader("Content-Type", "application/json")
-                    .addHeader("Authorization", "Bearer " + apiKey)
-                    .post(body)
-                    .build();
-
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    System.err.println("Error calling OpenAI API: " + response.code() + " " + response.message());
-                    return new String[] { "Unknown" };
-                }
-
-                String responseBody = response.body().string();
-                JSONObject jsonResponse = new JSONObject(responseBody);
-
-                // Extract and print token usage
-                JSONObject usage = jsonResponse.getJSONObject("usage");
-                int promptTokens = usage.getInt("prompt_tokens");
-                int completionTokens = usage.getInt("completion_tokens");
-                int totalTokens = usage.getInt("total_tokens");
-
-                System.out.println("Token usage:");
-                System.out.println("  Prompt tokens: " + promptTokens);
-                System.out.println("  Completion tokens: " + completionTokens);
-                System.out.println("  Total tokens: " + totalTokens);
-
-                String content = jsonResponse.getJSONArray("choices")
-                        .getJSONObject(0)
-                        .getJSONObject("message")
-                        .getString("content");
-
-                // Parse the content to extract the JSON array of topics
-                // First, find the array in the response
-                String contentTrimmed = content.trim();
-                int startIndex = contentTrimmed.indexOf('[');
-                int endIndex = contentTrimmed.lastIndexOf(']');
-
-                if (startIndex != -1 && endIndex != -1) {
-                    String jsonArrayString = contentTrimmed.substring(startIndex, endIndex + 1);
-                    JSONArray topicsArray = new JSONArray(jsonArrayString);
-
-                    // Convert JSONArray to String array
-                    String[] topics = new String[topicsArray.length()];
-                    for (int i = 0; i < topicsArray.length(); i++) {
-                        topics[i] = topicsArray.getString(i);
+    
+            OpenAI openAI = new OpenAI(OPENAI_MODEL, 0.3);
+            String response = openAI.query(prompt);
+            
+            // Parse the response
+            JSONArray topicsArray = OpenAI.parseJsonArrayResponse(response);
+            if (topicsArray != null) {
+                return OpenAI.jsonArrayToStringArray(topicsArray);
+            } else {
+                // Fallback to simple text parsing if JSON parsing fails
+                String[] topics = response.split("[\n,]");
+                List<String> cleanedTopics = new ArrayList<>();
+    
+                for (String topic : topics) {
+                    String cleaned = topic.trim()
+                            .replaceAll("^[0-9]+\\.\\s*", "") // Remove numbering
+                            .replaceAll("[\"\\[\\]]", ""); // Remove quotes and brackets
+    
+                    if (!cleaned.isEmpty() && !cleaned.equalsIgnoreCase("topics:")) {
+                        cleanedTopics.add(cleaned);
                     }
-                    return topics;
-                } else {
-                    // If we can't parse as JSON, try to extract topics in a different way
-                    // Split by newlines or commas and clean up
-                    String[] topics = content.split("[\n,]");
-                    List<String> cleanedTopics = new ArrayList<>();
-
-                    for (String topic : topics) {
-                        String cleaned = topic.trim()
-                                .replaceAll("^[0-9]+\\.\\s*", "") // Remove numbering
-                                .replaceAll("[\"\\[\\]]", ""); // Remove quotes and brackets
-
-                        if (!cleaned.isEmpty() && !cleaned.equalsIgnoreCase("topics:")) {
-                            cleanedTopics.add(cleaned);
-                        }
-                    }
-
-                    return cleanedTopics.toArray(new String[0]);
                 }
+    
+                return cleanedTopics.toArray(new String[0]);
             }
         } catch (Exception e) {
             System.err.println("Error identifying topics with OpenAI: " + e.getMessage());

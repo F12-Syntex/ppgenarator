@@ -3,26 +3,19 @@ package com.ppgenarator.core;
 import java.io.File;
 
 import com.ppgenarator.config.Configuration;
+import com.ppgenerator.types.FileInfo;
 
 public class Generator {
     public static void main(String[] args) {
 
-        File[] years = new File(Configuration.PAST_PAPER_DIRECTORY).listFiles();
+        File pastpapers = new File(Configuration.PAST_PAPER_DIRECTORY);
+        DirectoryFormatter directoryFomatter = new DirectoryFormatter(pastpapers);
 
-        if (years == null) {
-            System.out.println("No past papers found in the directory: " + Configuration.PAST_PAPER_DIRECTORY);
-            return;
+        FileInfo[] files = directoryFomatter.formatDirectory();
+
+        for (FileInfo file : files) {
+            System.out.println(file);
         }
-
-        for(File year : years) {
-            YearProcessor yearProcessor = new YearProcessor(year);
-            yearProcessor.process();
-        }
-
-        //generate topic questions
-        QuestionGeneration questionGeneration = new QuestionGeneration();
-        questionGeneration.process();
-
 
     }
 }
