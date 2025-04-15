@@ -15,18 +15,17 @@ import com.ppgenarator.config.Configuration;
 
 public class SectionBProcessor {
     private File sectionBFile;
+    private File outputDir;
 
-    public SectionBProcessor(File sectionBFile) {
+    public SectionBProcessor(File sectionBFile, File outputDir) {
         this.sectionBFile = sectionBFile;
+        this.outputDir = outputDir;
     }
 
     public void process() {
         try {
             PDDocument document = PDDocument.load(sectionBFile);
             
-            // Create output directory
-            File outputDir = new File(Configuration.OUTPUT_DIRECTORY,
-                    sectionBFile.getParentFile().getParentFile().getName());
             outputDir.mkdirs();
 
             // Find the page where Question 6 starts (a page containing a line starting with "6")

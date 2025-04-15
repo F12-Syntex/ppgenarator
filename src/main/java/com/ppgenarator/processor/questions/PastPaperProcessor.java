@@ -7,37 +7,39 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.text.PDFTextStripper;
 
+import com.ppgenerator.types.FileInfo;
+
 public class PastPaperProcessor {
 
-    private File pastpaper;
+    private FileInfo pastpaper;
 
-    public PastPaperProcessor(File pastpaper) {
+    public PastPaperProcessor(FileInfo pastpaper) {
         this.pastpaper = pastpaper;
     }
 
     public void process() {
-        if (!pastpaper.getName().endsWith(".pdf")) {
-            System.out.println("Not a pdf file: " + pastpaper.getAbsolutePath());
+        if (!pastpaper.getExtension().equals(".pdf")) {
+            System.out.println("Not a pdf file: " + pastpaper.getFile().getAbsolutePath());
             return;
         }
 
         try {
-            PDDocument document = PDDocument.load(pastpaper);
+            PDDocument document = PDDocument.load(pastpaper.getFile());
             if (document.isEncrypted()) {
-                System.out.println("Document is encrypted: " + pastpaper.getAbsolutePath());
+                System.out.println("Document is encrypted: " + pastpaper.getFile().getAbsolutePath());
                 return;
             }
 
-            File sectionAFile = new File(pastpaper.getParent(), "sectionA.pdf");
-            File sectionBFile = new File(pastpaper.getParent(), "sectionB.pdf");
-            File sectionCFile = new File(pastpaper.getParent(), "sectionC.pdf");
+            File sectionAFile = new File(pastpaper.getOutputFolder(), "sectionA.pdf");
+            File sectionBFile = new File(pastpaper.getOutputFolder(), "sectionB.pdf");
+            File sectionCFile = new File(pastpaper.getOutputFolder(), "sectionC.pdf");
 
             if (!(sectionAFile.exists() && sectionBFile.exists() && sectionCFile.exists())) {
                 this.processDocument(document);
             }
 
-            SectionAProcessor sectionAProcessor = new SectionAProcessor(sectionAFile);
-            SectionBProcessor sectionBProcessor = new SectionBProcessor(sectionBFile);
+            SectionAProcessor sectionAProcessor = new SectionAProcessor(sectionAFile, pastpaper.getOutputFolder());
+            SectionBProcessor sectionBProcessor = new SectionBProcessor(sectionBFile, pastpaper.getOutputFolder());
 
             sectionAProcessor.process();
             sectionBProcessor.process();
@@ -58,7 +60,7 @@ public class PastPaperProcessor {
         int sectionCStart = findSectionStart(text, "SECTION C");
 
         // Create output directory
-        String outputDir = pastpaper.getParent();
+        String outputDir = pastpaper.getOutputFolder().getAbsolutePath();
 
         // Create Section A
         PDDocument sectionA = new PDDocument();
