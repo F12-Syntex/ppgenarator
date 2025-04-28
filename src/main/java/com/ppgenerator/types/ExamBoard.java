@@ -8,7 +8,8 @@ public enum ExamBoard {
     CAMBRIDGE("cambridge"),
     IB("ib"),
     PEARSON("pearson"),
-    EDUQAS("eduqas");
+    EDUQAS("eduqas"),
+    UNKNOWN("unknown");
     
     private final String code;
     

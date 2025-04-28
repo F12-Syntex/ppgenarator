@@ -134,14 +134,12 @@ public class DirectoryFormatter {
         }
 
         // Try to extract information from filename first
-        FileInfo fileInfo = extractInfoFromFilename(originalName);
+        FileInfo fileInfo = extractInfoFromFilename(file, originalName);
 
         // If we couldn't get all the necessary information, use AI
         if (!fileInfo.isComplete()) {
             fileInfo = enhanceWithAI(file, fileInfo);
         }
-
-        fileInfo.setFile(file);
 
         // Save the FileInfo to our result list
         processedFiles.add(fileInfo);
@@ -161,7 +159,7 @@ public class DirectoryFormatter {
         results.add(new ProcessingResult(originalName, originalName, "skipped", "Already correctly formatted"));
 
         // Even for skipped files, we add them to the processed list
-        FileInfo fileInfo = extractInfoFromFilename(originalName);
+        FileInfo fileInfo = extractInfoFromFilename(file, originalName);
         processedFiles.add(fileInfo);
     }
 
@@ -219,8 +217,10 @@ public class DirectoryFormatter {
         return CORRECT_FORMAT_PATTERN.matcher(filename).matches();
     }
 
-    private FileInfo extractInfoFromFilename(String filename) {
+    private FileInfo extractInfoFromFilename(File file, String filename) {
         FileInfo info = new FileInfo();
+        info.setFile(file);
+
         String filenameNoExt = filename;
 
         // Extract extension

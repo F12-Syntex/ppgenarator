@@ -10,15 +10,14 @@ import java.util.regex.Pattern;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.text.PDFTextStripper;
-import org.apache.pdfbox.multipdf.Splitter;
-
-import com.ppgenarator.config.Configuration;
 
 public class SectionAProcessor {
     private File sectionAFile;
+    private File outputDir;
 
-    public SectionAProcessor(File sectionAFile) {
+    public SectionAProcessor(File sectionAFile, File outputDir) {
         this.sectionAFile = sectionAFile;
+        this.outputDir = outputDir;
     }
 
     public void process() {
@@ -27,9 +26,6 @@ public class SectionAProcessor {
             PDFTextStripper stripper = new PDFTextStripper();
             String text = stripper.getText(document);
 
-            // Create output directory
-            File outputDir = new File(Configuration.OUTPUT_DIRECTORY,
-                    sectionAFile.getParentFile().getParentFile().getName());
             outputDir.mkdirs();
 
             // Find all questions
@@ -41,7 +37,7 @@ public class SectionAProcessor {
             // Process each question
             for (Question question : questions) {
                 PDDocument questionDoc = new PDDocument();
-                
+
                 // Copy pages for this question
                 for (int pageNum = question.startPage; pageNum <= question.endPage; pageNum++) {
                     PDPage page = document.getPage(pageNum);
@@ -51,7 +47,7 @@ public class SectionAProcessor {
                 // Save question document
                 File questionFile = new File(outputDir, String.format("question%d.pdf", question.number));
 
-                //if already exists then skip
+                // if already exists then skip
                 if (questionFile.exists()) {
                     questionDoc.close();
                     continue;
@@ -91,7 +87,7 @@ public class SectionAProcessor {
         // Find all "Total for Question X = Y marks" occurrences
         Pattern totalPattern = Pattern.compile("Total for Question (\\d+) = \\d+ marks");
         Matcher totalMatcher = totalPattern.matcher(fullText);
-        
+
         // Store all end positions first
         List<QuestionEnd> questionEnds = new ArrayList<>();
         while (totalMatcher.find()) {
@@ -107,8 +103,8 @@ public class SectionAProcessor {
         // Process each question
         for (int i = 0; i < questionEnds.size(); i++) {
             QuestionEnd end = questionEnds.get(i);
-            int searchStartPos = (i > 0) ? questionEnds.get(i-1).position : 0;
-            
+            int searchStartPos = (i > 0) ? questionEnds.get(i - 1).position : 0;
+
             // Find start of this question
             Pattern startPattern = Pattern.compile("(?m)^\\s*" + end.questionNumber + "\\s");
             Matcher startMatcher = startPattern.matcher(fullText);
@@ -116,12 +112,12 @@ public class SectionAProcessor {
 
             if (startMatcher.find()) {
                 int startPosition = startMatcher.start();
-                int startPage = findPageForText(document, 
-                    fullText.substring(startPosition, Math.min(startPosition + 20, fullText.length())));
+                int startPage = findPageForText(document,
+                        fullText.substring(startPosition, Math.min(startPosition + 20, fullText.length())));
 
                 if (startPage != -1) {
-                    questions.add(new Question(end.questionNumber, startPage, end.page, 
-                        startPosition, end.position));
+                    questions.add(new Question(end.questionNumber, startPage, end.page,
+                            startPosition, end.position));
                 }
             }
         }

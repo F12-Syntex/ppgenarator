@@ -13,7 +13,8 @@ public class Question {
     private File markScheme;
 
     private String year;
-    private String board;
+    private ExamBoard board;
+    private Qualification qualification;
 
     private String[] topics;
 }
