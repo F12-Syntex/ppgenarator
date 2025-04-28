@@ -28,7 +28,7 @@ public class OpenAI {
      */
     public OpenAI() {
         this.apiKey = System.getenv("OPENAI_API_KEY");
-        this.model = "gpt-4o-mini";
+        this.model = "gpt-4.1-mini";
         this.temperature = 0.3;
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)

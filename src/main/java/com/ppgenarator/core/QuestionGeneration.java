@@ -26,7 +26,7 @@ import com.ppgenerator.types.Question;
 public class QuestionGeneration {
 
     private static final int MOCK_COUNT = 5; // Number of mock exams to generate
-    private static final int QUESTIONS_PER_MOCK = 5; // Number of questions per mock exam
+    private static final int QUESTIONS_PER_MOCK = 7; // Number of questions per mock exam
     private Random random = new Random();
 
     public void process() {

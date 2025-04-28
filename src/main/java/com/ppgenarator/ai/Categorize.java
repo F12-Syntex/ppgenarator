@@ -24,7 +24,7 @@ public class Categorize {
 
     private File yearDir;
     private static final String OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
-    private static final String OPENAI_MODEL = "gpt-4o-mini";
+    private static final String OPENAI_MODEL = "gpt-4.1-mini";
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     private final String apiKey;
     private final OkHttpClient httpClient;
