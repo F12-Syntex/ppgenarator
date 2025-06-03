@@ -19,40 +19,40 @@ public class Generator {
 
         // downloadPastPapers();
 
-        File pastpapers = new File(Configuration.PAST_PAPER_DIRECTORY);
-        DirectoryFormatter directoryFomatter = new DirectoryFormatter(pastpapers);
+        // File pastpapers = new File(Configuration.PAST_PAPER_DIRECTORY);
+        // DirectoryFormatter directoryFomatter = new DirectoryFormatter(pastpapers);
 
-        FileInfo[] files = directoryFomatter.formatDirectory();
+        // FileInfo[] files = directoryFomatter.formatDirectory();
 
-        for (FileInfo file : files) {
-            if (file.getDocumentType() == DocumentType.MARK_SCHEME) {
-                MarkSchemeProcessor markSchemeProcessor = new MarkSchemeProcessor(file);
-                markSchemeProcessor.process();
-            }
+        // for (FileInfo file : files) {
+        //     if (file.getDocumentType() == DocumentType.MARK_SCHEME) {
+        //         MarkSchemeProcessor markSchemeProcessor = new MarkSchemeProcessor(file);
+        //         markSchemeProcessor.process();
+        //     }
 
-            if (file.getDocumentType() == DocumentType.QUESTION_PAPER) {
-                PastPaperProcessor pastPaperProcessor = new PastPaperProcessor(file);
-                pastPaperProcessor.process();
-            }
-        }
+        //     if (file.getDocumentType() == DocumentType.QUESTION_PAPER) {
+        //         PastPaperProcessor pastPaperProcessor = new PastPaperProcessor(file);
+        //         pastPaperProcessor.process();
+        //     }
+        // }
 
-        List<Question> questions = new ArrayList<>();
+        // List<Question> questions = new ArrayList<>();
 
-        for (FileInfo file : files) {
-            List<Question> questionsForFile = file.extractQuestions();
-            System.out.println("Questions for file: " + file.getFile().getName() + " : "
-                    + questions.size());
-            questions.addAll(questionsForFile);
-        }
+        // for (FileInfo file : files) {
+        //     List<Question> questionsForFile = file.extractQuestions();
+        //     System.out.println("Questions for file: " + file.getFile().getName() + " : "
+        //             + questions.size());
+        //     questions.addAll(questionsForFile);
+        // }
 
         File output = new File(Configuration.OUTPUT_DIRECTORY);
-        Categorize categorize = new Categorize(output);
+        // Categorize categorize = new Categorize(output);
 
-        try {
-            categorize.processQuestions(questions);
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
+        // try {
+        //     categorize.processQuestions(questions);
+        // } catch (JSONException e) {
+        //     e.printStackTrace();
+        // }
 
         File outputDir = new File(Configuration.OUTPUT_DIRECTORY, "topics");
 

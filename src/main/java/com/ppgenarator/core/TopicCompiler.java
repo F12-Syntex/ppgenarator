@@ -20,6 +20,10 @@ import java.util.Set;
 
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -33,7 +37,7 @@ public class TopicCompiler {
 
     private File metadataDir;
     private File outputDir;
-    private int targetMarksPerMock = 25; // Default target marks per mock test
+    private int targetMarksPerMock = 15;
 
     public TopicCompiler(File metadataDir, File outputDir) {
         this.metadataDir = metadataDir;
@@ -120,8 +124,8 @@ public class TopicCompiler {
                     // Copy individual files
                     copyIndividualFiles(topicQuestions, questionsDir, markschemesDir);
 
-                    // Create mock tests
-                    createMockTests(topicQuestions, mockTestsDir, 5);
+                    // Create mock tests (generate as many as possible without overlap)
+                    createNonOverlappingMockTests(topicQuestions, mockTestsDir, qualification, topic);
 
                     // Save metadata about this topic
                     saveTopicMetadata(topic, topicQuestions, topicDir);
@@ -160,12 +164,8 @@ public class TopicCompiler {
                     JSONObject jsonQuestion = jsonArray.getJSONObject(i);
                     Question question = new Question();
 
-                    // Set basic properties
-                    // question.setQualification(
                     question.setQualification(
                             Qualification.fromString(jsonQuestion.optString("qualification", "UNKNOWN")));
-
-                    question.setMarks(jsonQuestion.optInt("marks", 1)); // Default to 1 mark if not specified
 
                     question.setQuestionNumber(jsonQuestion.getString("questionNumber"));
                     question.setYear(jsonQuestion.getString("year"));
@@ -210,10 +210,6 @@ public class TopicCompiler {
         return allQuestions;
     }
 
-    // ---------------------------
-    // Merge PDF creation (fix: ensure only unique, real files are merged, fresh
-    // PDFMergerUtility each time)
-    // ---------------------------
     private void createMergedPdf(List<Question> questions, File questionsDir, File markschemesDir) {
         try {
             // Sort questions by year and question number for consistent ordering
@@ -315,7 +311,7 @@ public class TopicCompiler {
             return org.apache.commons.codec.digest.DigestUtils.md5Hex(Files.readAllBytes(file.toPath()));
         } catch (IOException e) {
             System.err.println("Error calculating MD5 hash: " + e.getMessage());
-            return file.getName(); // Fallback to filename if we can't calculate hash
+            return file.getName();
         }
     }
 
@@ -340,121 +336,488 @@ public class TopicCompiler {
         }
     }
 
-    // ------------------------------------------
-    // MOCK TEST CREATION -- ENSURE NO DUPLICATES
-    // ------------------------------------------
-    private void createMockTests(List<Question> questions, File mockTestsDir, int numberOfTests) {
-        Random random = new Random();
+    private boolean isQuestion6(String questionNumber) {
+        return questionNumber != null && questionNumber.toLowerCase().startsWith("question6");
+    }
 
-        for (int i = 1; i <= numberOfTests; i++) {
-            try {
-                File mockTestDir = new File(mockTestsDir, "mock" + i);
+    private String getPaperIdentifier(Question question) {
+        // Create a unique identifier for the paper (year + board + specific paper info)
+        if (question.getQuestion() == null || !question.getQuestion().exists()) {
+            return question.getYear() + "_" + question.getBoard().toString();
+        }
+        
+        try {
+            // Get the path to find the paper directory
+            File questionFile = question.getQuestion();
+            File paperDir = questionFile.getParentFile(); // The paper directory (e.g., "1")
+            File yearDir = paperDir != null ? paperDir.getParentFile() : null; // The year directory
+            File boardDir = yearDir != null ? yearDir.getParentFile() : null; // The board directory
+            
+            if (paperDir != null && yearDir != null && boardDir != null) {
+                return question.getYear() + "_" + question.getBoard().toString() + "_" + paperDir.getName();
+            }
+        } catch (Exception e) {
+            System.err.println("Error getting paper identifier: " + e.getMessage());
+        }
+        
+        return question.getYear() + "_" + question.getBoard().toString();
+    }
+
+    private void createNonOverlappingMockTests(List<Question> questions, File mockTestsDir, String qualification, String topic) {
+        try {
+            // Shuffle questions for random distribution
+            List<Question> availableQuestions = new ArrayList<>(questions);
+            Collections.shuffle(availableQuestions, new Random());
+
+            int mockTestNumber = 1;
+            int questionsUsed = 0;
+
+            while (!availableQuestions.isEmpty()) {
+                // Select questions for this mock test without exceeding target marks
+                List<Question> selectedQuestions = new ArrayList<>();
+                Set<String> usedPapers = new HashSet<>(); // Track papers already used for Question 6
+                int totalMarks = 0;
+                
+                for (int i = availableQuestions.size() - 1; i >= 0; i--) {
+                    Question question = availableQuestions.get(i);
+                    
+                    // Check if this is Question 6 and if we already have a Question 6 from this paper
+                    if (isQuestion6(question.getQuestionNumber())) {
+                        String paperIdentifier = getPaperIdentifier(question);
+                        if (usedPapers.contains(paperIdentifier)) {
+                            continue; // Skip this question as we already have a Question 6 from this paper
+                        }
+                        
+                        // Check if adding this would fit within marks limit
+                        if (totalMarks + question.getMarks() <= targetMarksPerMock) {
+                            selectedQuestions.add(question);
+                            totalMarks += question.getMarks();
+                            usedPapers.add(paperIdentifier);
+                            availableQuestions.remove(i);
+                            questionsUsed++;
+                        }
+                    } else {
+                        // For non-Question 6, just check marks limit
+                        if (totalMarks + question.getMarks() <= targetMarksPerMock) {
+                            selectedQuestions.add(question);
+                            totalMarks += question.getMarks();
+                            availableQuestions.remove(i);
+                            questionsUsed++;
+                        }
+                    }
+                }
+
+                // If no questions were selected (all remaining questions exceed target), take the smallest one
+                if (selectedQuestions.isEmpty() && !availableQuestions.isEmpty()) {
+                    Question smallestQuestion = availableQuestions.stream()
+                            .min((q1, q2) -> Integer.compare(q1.getMarks(), q2.getMarks()))
+                            .orElse(null);
+                    
+                    if (smallestQuestion != null) {
+                        selectedQuestions.add(smallestQuestion);
+                        totalMarks = smallestQuestion.getMarks();
+                        availableQuestions.remove(smallestQuestion);
+                        questionsUsed++;
+                    }
+                }
+
+                if (selectedQuestions.isEmpty()) {
+                    break;
+                }
+
+                // Calculate estimated time (2 minutes per mark)
+                int estimatedMinutes = totalMarks * 2;
+
+                System.out.println("Mock test " + mockTestNumber + " created with " + selectedQuestions.size() +
+                        " questions, " + totalMarks + " marks, estimated time: " + estimatedMinutes + " minutes");
+
+                // Create mock test directory
+                File mockTestDir = new File(mockTestsDir, "mock" + mockTestNumber);
                 mockTestDir.mkdirs();
 
-                // Shuffle and select unique questions
-                List<Question> availableQuestions = new ArrayList<>(questions);
-                Collections.shuffle(availableQuestions, random);
+                // Create cover page
+                File coverPageFile = createCoverPage(mockTestNumber, selectedQuestions, totalMarks, 
+                        estimatedMinutes, qualification, topic, mockTestDir);
 
-                List<Question> selectedQuestions = new ArrayList<>();
-                int totalMarks = 0;
-                for (Question question : availableQuestions) {
-                    if (totalMarks + question.getMarks() <= targetMarksPerMock) {
-                        selectedQuestions.add(question);
-                        totalMarks += question.getMarks();
-                    }
-                }
-                // Never add a question twice, even if we don't reach the target
+                // Create the mock test PDFs with cover page
+                createMockTestPdfs(selectedQuestions, mockTestDir, coverPageFile);
 
-                System.out.println("Mock test " + i + " created with " + selectedQuestions.size() +
-                        " unique questions and " + totalMarks + " total marks");
+                // Save metadata for this mock test
+                saveMockTestMetadata(mockTestNumber, selectedQuestions, totalMarks, estimatedMinutes, mockTestDir);
 
-                // Prepare PDF mergers
-                PDFMergerUtility questionsMerger = new PDFMergerUtility();
-                questionsMerger.setDestinationFileName(new File(mockTestDir, "mock.pdf").getAbsolutePath());
-
-                PDFMergerUtility markschemesMerger = new PDFMergerUtility();
-                markschemesMerger
-                        .setDestinationFileName(new File(mockTestDir, "mock_markscheme.pdf").getAbsolutePath());
-
-                List<File> tempQuestionFiles = new ArrayList<>();
-                List<File> tempMarkSchemeFiles = new ArrayList<>();
-
-                boolean hasQuestions = false;
-                boolean hasMarkschemes = false;
-
-                JSONObject metadata = new JSONObject();
-                metadata.put("mockTestId", i);
-                metadata.put("questionCount", selectedQuestions.size());
-                metadata.put("totalMarks", totalMarks);
-                JSONArray questionsArray = new JSONArray();
-
-                for (Question question : selectedQuestions) {
-                    JSONObject jsonQuestion = new JSONObject();
-                    jsonQuestion.put("year", question.getYear());
-                    jsonQuestion.put("questionNumber", question.getQuestionNumber());
-                    jsonQuestion.put("board", question.getBoard());
-                    jsonQuestion.put("marks", question.getMarks());
-
-                    if (question.getQuestion() != null && question.getQuestion().exists()) {
-                        PDDocument document = PDDocument.load(question.getQuestion());
-                        File tempQuestionFile = File.createTempFile("temp_mock_q_", ".pdf");
-                        document.save(tempQuestionFile);
-                        document.close();
-
-                        questionsMerger.addSource(tempQuestionFile);
-                        tempQuestionFiles.add(tempQuestionFile);
-                        hasQuestions = true;
-
-                        jsonQuestion.put("questionFile", "mock.pdf");
-                    }
-
-                    if (question.getMarkScheme() != null && question.getMarkScheme().exists()) {
-                        PDDocument document = PDDocument.load(question.getMarkScheme());
-                        File tempMarkSchemeFile = File.createTempFile("temp_mock_ms_", ".pdf");
-                        document.save(tempMarkSchemeFile);
-                        document.close();
-
-                        markschemesMerger.addSource(tempMarkSchemeFile);
-                        tempMarkSchemeFiles.add(tempMarkSchemeFile);
-                        hasMarkschemes = true;
-
-                        jsonQuestion.put("markSchemeFile", "mock_markscheme.pdf");
-                    }
-
-                    questionsArray.put(jsonQuestion);
-                }
-
-                metadata.put("questions", questionsArray);
-
-                // Merge the PDFs
-                if (hasQuestions) {
-                    questionsMerger.mergeDocuments(null);
-                }
-                if (hasMarkschemes) {
-                    markschemesMerger.mergeDocuments(null);
-                }
-
-                // Clean up temporary files
-                for (File tempFile : tempQuestionFiles) {
-                    tempFile.delete();
-                }
-                for (File tempFile : tempMarkSchemeFiles) {
-                    tempFile.delete();
-                }
-
-                // Write metadata
-                File metadataFile = new File(mockTestDir, "metadata.json");
-                Files.write(
-                        metadataFile.toPath(),
-                        metadata.toString(2).getBytes(),
-                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-
-                generateMockTestHtml(i, selectedQuestions, totalMarks, mockTestDir);
-
-            } catch (Exception e) {
-                System.err.println("Error creating mock test " + i + ": " + e.getMessage());
-                e.printStackTrace();
+                mockTestNumber++;
             }
+
+            System.out.println("Created " + (mockTestNumber - 1) + " mock tests using " + questionsUsed + 
+                    " out of " + questions.size() + " questions");
+
+        } catch (Exception e) {
+            System.err.println("Error creating mock tests: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private Set<File> findRequiredExtracts(List<Question> questions) {
+        Set<File> extractFiles = new HashSet<>();
+        
+        for (Question question : questions) {
+            // Check if this is a question 6 variant (6, 6a, 6b, 6c, etc.)
+            if (isQuestion6(question.getQuestionNumber())) {
+                File extractFile = findExtractFile(question);
+                if (extractFile != null && extractFile.exists()) {
+                    extractFiles.add(extractFile);
+                }
+            }
+        }
+        
+        return extractFiles;
+    }
+
+    private File findExtractFile(Question question) {
+        if (question.getQuestion() == null || !question.getQuestion().exists()) {
+            return null;
+        }
+        
+        try {
+            // Get the path to the question file
+            String questionPath = question.getQuestion().getAbsolutePath();
+            
+            // Parse the path to find the extract location
+            // Expected format: ...\subject\level\board\year\paper\questionX.pdf
+            // Extract should be: ...\subject\level\board\year\paper\extract.pdf
+            
+            File questionFile = question.getQuestion();
+            File paperDir = questionFile.getParentFile(); // The paper directory (e.g., "1")
+            
+            if (paperDir != null) {
+                File extractFile = new File(paperDir, "extract.pdf");
+                if (extractFile.exists()) {
+                    return extractFile;
+                }
+            }
+            
+            System.out.println("Extract file not found for question: " + questionPath);
+            return null;
+            
+        } catch (Exception e) {
+            System.err.println("Error finding extract file for question " + question.getQuestionNumber() + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    private File createCoverPage(int mockTestNumber, List<Question> questions, int totalMarks, 
+            int estimatedMinutes, String qualification, String topic, File mockTestDir) throws IOException {
+        
+        File coverPageFile = new File(mockTestDir, "cover_page.pdf");
+        
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            document.addPage(page);
+            
+            try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
+                float margin = 50;
+                float pageWidth = page.getMediaBox().getWidth();
+                float yPosition = page.getMediaBox().getHeight() - margin;
+                
+                // Header - Best Tutors
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 28);
+                float titleWidth = PDType1Font.HELVETICA_BOLD.getStringWidth("BEST TUTORS") / 1000 * 28;
+                contentStream.newLineAtOffset((pageWidth - titleWidth) / 2, yPosition);
+                contentStream.showText("BEST TUTORS");
+                contentStream.endText();
+                yPosition -= 35;
+                
+                // Subtitle
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA_OBLIQUE, 14);
+                String subtitle = "Name and reference";
+                float subtitleWidth = PDType1Font.HELVETICA_OBLIQUE.getStringWidth(subtitle) / 1000 * 14;
+                contentStream.newLineAtOffset((pageWidth - subtitleWidth) / 2, yPosition);
+                contentStream.showText(subtitle);
+                contentStream.endText();
+                yPosition -= 40;
+                
+                // Decorative line
+                contentStream.setLineWidth(2);
+                contentStream.moveTo(margin + 50, yPosition);
+                contentStream.lineTo(pageWidth - margin - 50, yPosition);
+                contentStream.stroke();
+                yPosition -= 30;
+                
+                // Mock Test Title
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 24);
+                String mockTitle = "Mock Test " + mockTestNumber;
+                float mockTitleWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(mockTitle) / 1000 * 24;
+                contentStream.newLineAtOffset((pageWidth - mockTitleWidth) / 2, yPosition);
+                contentStream.showText(mockTitle);
+                contentStream.endText();
+                yPosition -= 50;
+                
+                // Topic and Qualification in a box
+                float boxWidth = pageWidth - 2 * margin;
+                float boxHeight = 80;
+                contentStream.setLineWidth(1);
+                contentStream.addRect(margin, yPosition - boxHeight, boxWidth, boxHeight);
+                contentStream.stroke();
+                
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 16);
+                contentStream.newLineAtOffset(margin + 20, yPosition - 25);
+                contentStream.showText("Subject: " + topic);
+                contentStream.endText();
+                
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA, 14);
+                contentStream.newLineAtOffset(margin + 20, yPosition - 50);
+                contentStream.showText("Qualification: " + qualification.toUpperCase());
+                contentStream.endText();
+                
+                yPosition -= boxHeight + 30;
+                
+                // Test Information Box
+                float infoBoxHeight = 120;
+                contentStream.setLineWidth(1);
+                contentStream.addRect(margin, yPosition - infoBoxHeight, boxWidth, infoBoxHeight);
+                contentStream.stroke();
+                
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 14);
+                contentStream.newLineAtOffset(margin + 20, yPosition - 25);
+                contentStream.showText("Test Information");
+                contentStream.endText();
+                
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA, 12);
+                contentStream.newLineAtOffset(margin + 40, yPosition - 50);
+                contentStream.showText("Number of Questions: " + questions.size());
+                contentStream.endText();
+                
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA, 12);
+                contentStream.newLineAtOffset(margin + 40, yPosition - 70);
+                contentStream.showText("Total Marks: " + totalMarks);
+                contentStream.endText();
+                
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
+                contentStream.newLineAtOffset(margin + 40, yPosition - 90);
+                contentStream.showText("Estimated Time: " + estimatedMinutes + " minutes");
+                contentStream.endText();
+                
+                yPosition -= infoBoxHeight + 30;
+                
+                // Instructions
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 14);
+                contentStream.newLineAtOffset(margin, yPosition);
+                contentStream.showText("Instructions:");
+                contentStream.endText();
+                yPosition -= 25;
+                
+                String[] instructions = {
+                    "• Answer ALL questions in the spaces provided",
+                    "• Show all your working clearly and logically",
+                    "• Give your final answers to an appropriate degree of accuracy",
+                    "• Check your work carefully before submitting",
+                    "• The mark allocation for each question is shown in brackets [ ]"
+                };
+                
+                for (String instruction : instructions) {
+                    contentStream.beginText();
+                    contentStream.setFont(PDType1Font.HELVETICA, 11);
+                    contentStream.newLineAtOffset(margin + 20, yPosition);
+                    contentStream.showText(instruction);
+                    contentStream.endText();
+                    yPosition -= 18;
+                }
+                
+                yPosition -= 20;
+                
+                // Question Breakdown
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 13);
+                contentStream.newLineAtOffset(margin, yPosition);
+                contentStream.showText("Question Overview:");
+                contentStream.endText();
+                yPosition -= 20;
+                
+                // Sort questions by year and question number
+                List<Question> sortedQuestions = new ArrayList<>(questions);
+                sortedQuestions.sort((q1, q2) -> {
+                    int yearCompare = q1.getYear().compareTo(q2.getYear());
+                    if (yearCompare != 0) {
+                        return yearCompare;
+                    }
+                    return q1.getQuestionNumber().compareTo(q2.getQuestionNumber());
+                });
+                
+                for (int i = 0; i < sortedQuestions.size() && yPosition > 80; i++) {
+                    Question question = sortedQuestions.get(i);
+                    contentStream.beginText();
+                    contentStream.setFont(PDType1Font.HELVETICA, 10);
+                    contentStream.newLineAtOffset(margin + 20, yPosition);
+                    String questionInfo = String.format("Q%d: %s %s [%d marks]", 
+                            (i + 1), question.getYear(), question.getQuestionNumber(), question.getMarks());
+                    contentStream.showText(questionInfo);
+                    contentStream.endText();
+                    yPosition -= 15;
+                }
+                
+                // Footer
+                yPosition = margin + 20;
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA_OBLIQUE, 10);
+                String footer = "Good luck with your test!";
+                float footerWidth = PDType1Font.HELVETICA_OBLIQUE.getStringWidth(footer) / 1000 * 10;
+                contentStream.newLineAtOffset((pageWidth - footerWidth) / 2, yPosition);
+                contentStream.showText(footer);
+                contentStream.endText();
+            }
+            
+            document.save(coverPageFile);
+        }
+        
+        return coverPageFile;
+    }
+
+    private void createMockTestPdfs(List<Question> questions, File mockTestDir, File coverPageFile) {
+        try {
+            // Create questions PDF with cover page
+            PDFMergerUtility questionsMerger = new PDFMergerUtility();
+            questionsMerger.setDestinationFileName(new File(mockTestDir, "mock.pdf").getAbsolutePath());
+            
+            // Add cover page first
+            questionsMerger.addSource(coverPageFile);
+            
+            // Check if we need to include any extracts
+            Set<File> extractFiles = findRequiredExtracts(questions);
+            
+            // Add extracts before questions if any are found
+            List<File> tempExtractFiles = new ArrayList<>();
+            for (File extractFile : extractFiles) {
+                if (extractFile.exists()) {
+                    PDDocument document = PDDocument.load(extractFile);
+                    File tempExtractFile = File.createTempFile("temp_mock_extract_", ".pdf");
+                    document.save(tempExtractFile);
+                    document.close();
+                    
+                    questionsMerger.addSource(tempExtractFile);
+                    tempExtractFiles.add(tempExtractFile);
+                    System.out.println("Added extract: " + extractFile.getName());
+                }
+            }
+            
+            // Create markschemes PDF
+            PDFMergerUtility markschemesMerger = new PDFMergerUtility();
+            markschemesMerger.setDestinationFileName(new File(mockTestDir, "mock_markscheme.pdf").getAbsolutePath());
+
+            List<File> tempQuestionFiles = new ArrayList<>();
+            List<File> tempMarkSchemeFiles = new ArrayList<>();
+
+            boolean hasQuestions = false;
+            boolean hasMarkschemes = false;
+
+            for (Question question : questions) {
+                if (question.getQuestion() != null && question.getQuestion().exists()) {
+                    PDDocument document = PDDocument.load(question.getQuestion());
+                    File tempQuestionFile = File.createTempFile("temp_mock_q_", ".pdf");
+                    document.save(tempQuestionFile);
+                    document.close();
+
+                    questionsMerger.addSource(tempQuestionFile);
+                    tempQuestionFiles.add(tempQuestionFile);
+                    hasQuestions = true;
+                }
+
+                if (question.getMarkScheme() != null && question.getMarkScheme().exists()) {
+                    PDDocument document = PDDocument.load(question.getMarkScheme());
+                    File tempMarkSchemeFile = File.createTempFile("temp_mock_ms_", ".pdf");
+                    document.save(tempMarkSchemeFile);
+                    document.close();
+
+                    markschemesMerger.addSource(tempMarkSchemeFile);
+                    tempMarkSchemeFiles.add(tempMarkSchemeFile);
+                    hasMarkschemes = true;
+                }
+            }
+
+            // Merge the PDFs
+            if (hasQuestions) {
+                questionsMerger.mergeDocuments(null);
+            }
+            if (hasMarkschemes) {
+                markschemesMerger.mergeDocuments(null);
+            }
+
+            // Clean up temporary files
+            for (File tempFile : tempQuestionFiles) {
+                tempFile.delete();
+            }
+            for (File tempFile : tempMarkSchemeFiles) {
+                tempFile.delete();
+            }
+            for (File tempFile : tempExtractFiles) {
+                tempFile.delete();
+            }
+
+            // Delete the temporary cover page file
+            coverPageFile.delete();
+
+        } catch (IOException e) {
+            System.err.println("Error creating mock test PDFs: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void saveMockTestMetadata(int mockTestId, List<Question> questions, int totalMarks, 
+            int estimatedMinutes, File mockTestDir) {
+        try {
+            JSONObject metadata = new JSONObject();
+            metadata.put("mockTestId", mockTestId);
+            metadata.put("questionCount", questions.size());
+            metadata.put("totalMarks", totalMarks);
+            metadata.put("estimatedMinutes", estimatedMinutes);
+
+            // Check for extracts
+            Set<File> extractFiles = findRequiredExtracts(questions);
+            JSONArray extractsArray = new JSONArray();
+            for (File extractFile : extractFiles) {
+                if (extractFile.exists()) {
+                    extractsArray.put(extractFile.getName());
+                }
+            }
+            metadata.put("extracts", extractsArray);
+            metadata.put("hasExtracts", !extractFiles.isEmpty());
+
+            JSONArray questionsArray = new JSONArray();
+            for (Question question : questions) {
+                JSONObject jsonQuestion = new JSONObject();
+                jsonQuestion.put("year", question.getYear());
+                jsonQuestion.put("questionNumber", question.getQuestionNumber());
+                jsonQuestion.put("board", question.getBoard());
+                jsonQuestion.put("marks", question.getMarks());
+                jsonQuestion.put("questionText", question.getQuestionText());
+                
+                // Mark if this question requires an extract
+                boolean requiresExtract = isQuestion6(question.getQuestionNumber());
+                jsonQuestion.put("requiresExtract", requiresExtract);
+                
+                questionsArray.put(jsonQuestion);
+            }
+
+            metadata.put("questions", questionsArray);
+
+            File metadataFile = new File(mockTestDir, "metadata.json");
+            Files.write(
+                    metadataFile.toPath(),
+                    metadata.toString(2).getBytes(),
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+
+        } catch (Exception e) {
+            System.err.println("Error saving mock test metadata: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -496,15 +859,11 @@ public class TopicCompiler {
 
             metadata.put("questions", questionsArray);
 
-            // Write the JSON to a file
             File metadataFile = new File(topicDir, "metadata.json");
             Files.write(
                     metadataFile.toPath(),
-                    metadata.toString(2).getBytes(), // Pretty print with indentation of 2
+                    metadata.toString(2).getBytes(),
                     StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-
-            // Create a simple HTML index file for easier browsing
-            generateHtmlIndex(topic, questions, topicDir);
 
         } catch (JSONException | IOException e) {
             System.err.println("Error saving metadata for topic " + topic + ": " + e.getMessage());
@@ -512,182 +871,8 @@ public class TopicCompiler {
         }
     }
 
-    private void generateHtmlIndex(String topic, List<Question> questions, File topicDir) throws IOException {
-        StringBuilder html = new StringBuilder();
-        html.append("<!DOCTYPE html>\n")
-                .append("<html lang=\"en\">\n")
-                .append("<head>\n")
-                .append("    <meta charset=\"UTF-8\">\n")
-                .append("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
-                .append("    <title>").append(topic).append(" - Question Compilation</title>\n")
-                .append("    <style>\n")
-                .append("        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }\n")
-                .append("        h1 { color: #333; }\n")
-                .append("        .question { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }\n")
-                .append("        .question h3 { margin-top: 0; }\n")
-                .append("        .question-text { margin: 10px 0; font-style: italic; color: #555; }\n")
-                .append("        .links { margin-top: 10px; }\n")
-                .append("        .links a { display: inline-block; margin-right: 10px; padding: 5px 10px; background: #f0f0f0; text-decoration: none; color: #333; border-radius: 3px; }\n")
-                .append("        .links a:hover { background: #e0e0e0; }\n")
-                .append("        .merged-links { margin: 20px 0; }\n")
-                .append("        .mock-tests { margin: 20px 0; padding: 15px; background: #f8f8f8; border-radius: 5px; }\n")
-                .append("        .marks { font-weight: bold; color: #d9534f; }\n")
-                .append("    </style>\n")
-                .append("</head>\n")
-                .append("<body>\n")
-                .append("    <h1>").append(topic).append(" - Question Compilation</h1>\n");
-
-        // Calculate total marks
-        int totalMarks = 0;
-        for (Question question : questions) {
-            totalMarks += question.getMarks();
-        }
-
-        html.append("    <p>Total questions: ").append(questions.size())
-                .append(" (Total marks: ").append(totalMarks).append(")</p>\n")
-                .append("    <div class=\"merged-links\">\n")
-                .append("        <h2>Merged Files:</h2>\n")
-                .append("        <a href=\"questions/questions.pdf\" target=\"_blank\">All Questions PDF</a> | \n")
-                .append("        <a href=\"markschemes/markscheme.pdf\" target=\"_blank\">All Mark Schemes PDF</a>\n")
-                .append("    </div>\n");
-
-        html.append("    <div class=\"mock-tests\">\n")
-                .append("        <h2>Mock Tests:</h2>\n")
-                .append("        <ul>\n");
-
-        for (int i = 1; i <= 5; i++) {
-            html.append("            <li><a href=\"mock_tests/mock")
-                    .append(i).append("/index.html\" target=\"_blank\">Mock Test ").append(i)
-                    .append(" (Target: ").append(targetMarksPerMock).append(" marks)</a></li>\n");
-        }
-
-        html.append("        </ul>\n")
-                .append("    </div>\n");
-
-        // Sort questions by year and question number
-        questions.sort((q1, q2) -> {
-            int yearCompare = q1.getYear().compareTo(q2.getYear());
-            if (yearCompare != 0) {
-                return yearCompare;
-            }
-            return q1.getQuestionNumber().compareTo(q2.getQuestionNumber());
-        });
-
-        html.append("    <h2>Individual Questions:</h2>\n");
-
-        for (Question question : questions) {
-            html.append("    <div class=\"question\">\n")
-                    .append("        <h3>").append(question.getYear()).append(" - Question ")
-                    .append(question.getQuestionNumber())
-                    .append(" <span class=\"marks\">(").append(question.getMarks()).append(" marks)</span></h3>\n");
-
-            if (question.getQuestionText() != null && !question.getQuestionText().isEmpty()) {
-                // Limit question text preview to 200 characters
-                String preview = question.getQuestionText();
-                if (preview.length() > 200) {
-                    preview = preview.substring(0, 200) + "...";
-                }
-                html.append("        <div class=\"question-text\">").append(escapeHtml(preview)).append("</div>\n");
-            }
-
-            html.append("        <div class=\"links\">\n");
-
-            if (question.getQuestion() != null) {
-                String questionPath = "questions/" + question.getYear() + "_" + question.getQuestionNumber()
-                        + "_question.pdf";
-                html.append("            <a href=\"").append(questionPath)
-                        .append("\" target=\"_blank\">View Question</a>\n");
-            }
-
-            if (question.getMarkScheme() != null) {
-                String markSchemePath = "markschemes/" + question.getYear() + "_" + question.getQuestionNumber()
-                        + "_markscheme.pdf";
-                html.append("            <a href=\"").append(markSchemePath)
-                        .append("\" target=\"_blank\">View Mark Scheme</a>\n");
-            }
-
-            html.append("        </div>\n")
-                    .append("    </div>\n");
-        }
-
-        html.append("</body>\n")
-                .append("</html>");
-
-        Files.write(new File(topicDir, "index.html").toPath(), html.toString().getBytes());
-    }
-
-    private void generateMockTestHtml(int mockTestId, List<Question> questions, int totalMarks, File mockTestDir)
-            throws IOException {
-        StringBuilder html = new StringBuilder();
-        html.append("<!DOCTYPE html>\n")
-                .append("<html lang=\"en\">\n")
-                .append("<head>\n")
-                .append("    <meta charset=\"UTF-8\">\n")
-                .append("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
-                .append("    <title>Mock Test ").append(mockTestId).append("</title>\n")
-                .append("    <style>\n")
-                .append("        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }\n")
-                .append("        h1 { color: #333; }\n")
-                .append("        .mock-info { margin-bottom: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px; }\n")
-                .append("        .question-list { margin-top: 20px; }\n")
-                .append("        .question-item { margin-bottom: 10px; }\n")
-                .append("        .links { margin-top: 20px; }\n")
-                .append("        .links a { display: inline-block; margin-right: 10px; padding: 8px 15px; background: #4CAF50; color: white; text-decoration: none; border-radius: 4px; }\n")
-                .append("        .links a:hover { background: #45a049; }\n")
-                .append("        .marks { font-weight: bold; color: #d9534f; }\n")
-                .append("    </style>\n")
-                .append("</head>\n")
-                .append("<body>\n")
-                .append("    <h1>Mock Test ").append(mockTestId).append("</h1>\n")
-                .append("    <div class=\"mock-info\">\n")
-                .append("        <p>This mock test contains ").append(questions.size())
-                .append(" questions with a total of ").append(totalMarks)
-                .append(" marks (Target: ").append(targetMarksPerMock).append(" marks).</p>\n")
-                .append("    </div>\n")
-                .append("    <div class=\"links\">\n")
-                .append("        <a href=\"mock.pdf\" target=\"_blank\">View Questions</a>\n")
-                .append("        <a href=\"mock_markscheme.pdf\" target=\"_blank\">View Mark Scheme</a>\n")
-                .append("    </div>\n")
-                .append("    <div class=\"question-list\">\n")
-                .append("        <h2>Questions included:</h2>\n")
-                .append("        <ul>\n");
-
-        for (Question question : questions) {
-            html.append("            <li class=\"question-item\">")
-                    .append(question.getYear()).append(" - Question ").append(question.getQuestionNumber())
-                    .append(" <span class=\"marks\">(").append(question.getMarks()).append(" marks)</span>");
-
-            if (question.getQuestionText() != null && !question.getQuestionText().isEmpty()) {
-                String preview = question.getQuestionText();
-                if (preview.length() > 100) {
-                    preview = preview.substring(0, 100) + "...";
-                }
-                html.append(" - ").append(escapeHtml(preview));
-            }
-
-            html.append("</li>\n");
-        }
-
-        html.append("        </ul>\n")
-                .append("    </div>\n")
-                .append("</body>\n")
-                .append("</html>");
-
-        Files.write(new File(mockTestDir, "index.html").toPath(), html.toString().getBytes());
-    }
-
     private String sanitizeFileName(String input) {
-        // Replace any character that isn't a letter, number, or underscore with
-        // underscore
         return input.replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
-    }
-
-    private String escapeHtml(String input) {
-        return input.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
     }
 
     public static void main(String[] args) {
@@ -709,7 +894,6 @@ public class TopicCompiler {
 
         TopicCompiler compiler = new TopicCompiler(metadataDir, outputDir);
 
-        // Set target marks per mock test if provided
         if (args.length > 2) {
             try {
                 int targetMarksPerMock = Integer.parseInt(args[2]);
