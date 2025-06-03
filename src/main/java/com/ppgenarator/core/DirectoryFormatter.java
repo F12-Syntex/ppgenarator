@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import com.ppgenarator.ai.OpenAI;
+import com.ppgenarator.ai.OpenAiService;
 import com.ppgenerator.types.FileInfo;
 import com.ppgenerator.types.ProcessingResult;
 import com.ppgenerator.types.DocumentType;
@@ -21,7 +21,7 @@ import com.ppgenerator.types.Qualification;
 
 public class DirectoryFormatter {
     private final File folder;
-    private final OpenAI openAI;
+    private final OpenAiService openAI;
     private final File uncategorizedFolder;
     private final List<ProcessingResult> results = new ArrayList<>();
     private final List<FileInfo> processedFiles = new ArrayList<>();
@@ -59,7 +59,7 @@ public class DirectoryFormatter {
 
     public DirectoryFormatter(File folder) {
         this.folder = folder;
-        this.openAI = new OpenAI();
+        this.openAI = new OpenAiService();
         this.uncategorizedFolder = new File(folder, "uncategorized");
     }
 

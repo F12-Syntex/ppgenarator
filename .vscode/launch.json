@@ -6,6 +6,19 @@
     "configurations": [
         {
             "type": "java",
+            "name": "Launch Java Program",
+            "request": "launch",
+            "mainClass": "com.ppgenarator.core.Generator"
+        },
+        {
+            "type": "java",
+            "name": "PastPaperDownloader",
+            "request": "launch",
+            "mainClass": "com.ppgenarator.core.PastPaperDownloader",
+            "projectName": "ppgenarator"
+        },
+        {
+            "type": "java",
             "name": "TopicCompiler",
             "request": "launch",
             "mainClass": "com.ppgenarator.core.TopicCompiler",
@@ -15,7 +28,7 @@
             "type": "java",
             "name": "Current File",
             "request": "launch",
-            "mainClass": "${file}"
+            "mainClass": "com.ppgenarator.core.Generator"
         },
         {
             "type": "java",

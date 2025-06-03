@@ -17,8 +17,7 @@ import com.ppgenerator.types.Question;
 public class Generator {
     public static void main(String[] args) {
 
-
-        downloadPastPapers();
+        // downloadPastPapers();
 
         File pastpapers = new File(Configuration.PAST_PAPER_DIRECTORY);
         DirectoryFormatter directoryFomatter = new DirectoryFormatter(pastpapers);
@@ -41,7 +40,8 @@ public class Generator {
 
         for (FileInfo file : files) {
             List<Question> questionsForFile = file.extractQuestions();
-            System.out.println("Questions for file: " + file.getFile().getName() + " : " + questions.size());
+            System.out.println("Questions for file: " + file.getFile().getName() + " : "
+                    + questions.size());
             questions.addAll(questionsForFile);
         }
 
@@ -61,11 +61,11 @@ public class Generator {
 
     }
 
-
-    private static void downloadPastPapers(){
+    private static void downloadPastPapers() {
         File pastpaperFolder = new File(Configuration.PAST_PAPER_DIRECTORY);
         PastPaperDownloader downloader = new PastPaperDownloader(pastpaperFolder);
-        downloader.downloadPastPapers("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-1/");
+        downloader.downloadPastPapers(
+                "https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-2/");
         // downloader.downloadPastPapers("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-2/");
         // downloader.downloadPastPapers("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-3/");
         System.exit(0);
