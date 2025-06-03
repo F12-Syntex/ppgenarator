@@ -1,5 +1,7 @@
 package com.ppgenerator.types;
 
+import kotlin.UNINITIALIZED_VALUE;
+
 public enum Qualification {
     GCSE("gcse"),
     A_LEVEL("alevel"),
@@ -7,7 +9,8 @@ public enum Qualification {
     IGCSE("igcse"),
     DIPLOMA("diploma"),
     BTEC("btec"),
-    IB("ib");
+    IB("ib"),
+    UNKNOWN("unknown");
     
     private final String code;
     
@@ -28,7 +31,7 @@ public enum Qualification {
         
         // Handle special cases
         if (text.equalsIgnoreCase("a-level") || text.equalsIgnoreCase("a level") || 
-            text.equalsIgnoreCase("gce")) {
+            text.equalsIgnoreCase("gce") || text.equalsIgnoreCase("a_level")) {
             return A_LEVEL;
         } else if (text.equalsIgnoreCase("as-level") || text.equalsIgnoreCase("as level")) {
             return AS;

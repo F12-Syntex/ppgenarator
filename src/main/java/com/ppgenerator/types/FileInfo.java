@@ -50,7 +50,8 @@ public class FileInfo {
                 File markschemeFile = new File(markschemeFolder, questionNumber + ".pdf");
 
                 if (!markschemeFile.exists()) {
-                    // System.out.println("Mark scheme file not found for " + questionFile.getName());
+                    // System.out.println("Mark scheme file not found for " +
+                    // questionFile.getName());
                     continue;
                 }
 
@@ -62,10 +63,35 @@ public class FileInfo {
                 question.setQuestion(questionFile);
                 question.setMarkScheme(markschemeFile);
 
+                switch (questionNumber) {
+                    case "question1":
+                    case "question2":
+                    case "question3":
+                    case "question4":
+                    case "question5":
+                    case "question6a":
+                        question.setMarks(5);
+                        break;
+                    case "question6b":
+                        question.setMarks(12);
+                        break;
+                    case "question6c":
+                        question.setMarks(8);
+                        break;
+                    case "question6d":
+                        question.setMarks(10);
+                        break;
+                    case "question6e":
+                        question.setMarks(15);
+                        break;
+                    default:
+                        break;
+                }
+
                 questions.add(question);
             }
         }
-        
+
         return questions;
     }
 }

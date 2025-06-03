@@ -65,9 +65,12 @@ public class Generator {
         File pastpaperFolder = new File(Configuration.PAST_PAPER_DIRECTORY);
         PastPaperDownloader downloader = new PastPaperDownloader(pastpaperFolder);
         downloader.downloadPastPapers(
-                "https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-2/");
+                "https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-1-as/");
+        downloader.downloadPastPapers(
+                "https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-2-as/");
+        // downloader.downloadPastPapers(
+        // "https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-1/");
         // downloader.downloadPastPapers("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-2/");
-        // downloader.downloadPastPapers("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-3/");
         System.exit(0);
     }
 

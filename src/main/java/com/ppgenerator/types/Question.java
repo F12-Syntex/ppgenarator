@@ -15,6 +15,7 @@ public class Question {
     private String year;
     private ExamBoard board;
     private Qualification qualification;
+    private int marks;
 
     private String[] topics;
 }

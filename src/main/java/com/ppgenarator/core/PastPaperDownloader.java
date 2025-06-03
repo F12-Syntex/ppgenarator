@@ -34,7 +34,7 @@ public class PastPaperDownloader {
     private final String filenamePrefix;
 
     public PastPaperDownloader(File outputFolder) {
-        this(outputFolder, 2, 5, true, "economics_");
+        this(outputFolder, 1, 5, true, "economics_");
     }
 
     public PastPaperDownloader(File outputFolder, int maxDepth, int maxThreads, boolean followLinksOnSameDomain) {
