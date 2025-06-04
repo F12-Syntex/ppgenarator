@@ -49,16 +49,14 @@ public class MockTestGenerator {
             System.out.println("Found " + q1To5Questions.size() + " Q1-5 questions and " +
                     q6Questions.size() + " Q6 questions");
 
-            int mockTestNumber = 1;
-
-            // Create Q1-5 only mock tests if enabled
+            // Create short questions mocks if enabled
             if (createQ1To5OnlyMocks && !q1To5Questions.isEmpty()) {
-                mockTestNumber = createQ1To5OnlyMocks(q1To5Questions, mockTestsDir, qualification, topic,
-                        mockTestNumber);
+                createShortQuestionsMocks(new ArrayList<>(q1To5Questions), mockTestsDir, qualification, topic);
             }
 
-            // Create mixed mock tests
-            createMixedMockTests(q1To5Questions, q6Questions, mockTestsDir, qualification, topic, mockTestNumber);
+            // Create mixed mock tests with remaining questions
+            createMixedMockTests(new ArrayList<>(q1To5Questions), new ArrayList<>(q6Questions),
+                    mockTestsDir, qualification, topic);
 
         } catch (Exception e) {
             System.err.println("Error creating mock tests: " + e.getMessage());
@@ -84,62 +82,61 @@ public class MockTestGenerator {
         return uniqueQuestions;
     }
 
-    private int createQ1To5OnlyMocks(List<Question> q1To5Questions, File mockTestsDir, String qualification,
-            String topic, int startingMockNumber) throws IOException {
-        System.out.println("Creating Q1-5 only mock tests...");
+    private void createShortQuestionsMocks(List<Question> q1To5Questions, File mockTestsDir, String qualification,
+            String topic) throws IOException {
+        System.out.println("Creating short questions mocks...");
 
         int totalAvailableMarks = q1To5Questions.stream().mapToInt(Question::getMarks).sum();
 
         if (totalAvailableMarks < targetMarksPerMock) {
             if (!q1To5Questions.isEmpty()) {
-                createSingleMock(q1To5Questions, mockTestsDir, qualification, topic, startingMockNumber, true);
-                return startingMockNumber + 1;
+                createSingleMock(q1To5Questions, mockTestsDir, qualification, topic, "short questions mock", true);
             }
-            return startingMockNumber;
+            return;
         }
 
-        List<Question> availableQ1To5 = new ArrayList<>(q1To5Questions);
-        Collections.shuffle(availableQ1To5, new Random());
+        Collections.shuffle(q1To5Questions, new Random());
+        int shortMocksCreated = 0;
 
-        int mockTestNumber = startingMockNumber;
-        int q1To5MocksCreated = 0;
-
-        while (q1To5MocksCreated < minimumQ1To5MockTests && !availableQ1To5.isEmpty()) {
-            List<Question> selectedQuestions = selectQuestionsForMock(availableQ1To5, targetMarksPerMock);
+        while (shortMocksCreated < minimumQ1To5MockTests && !q1To5Questions.isEmpty()) {
+            List<Question> selectedQuestions = selectQuestionsForMock(q1To5Questions, targetMarksPerMock);
 
             if (selectedQuestions.isEmpty())
                 break;
 
-            createMockTest(selectedQuestions, mockTestsDir, qualification, topic, mockTestNumber, true);
-            mockTestNumber++;
-            q1To5MocksCreated++;
+            String mockName = shortMocksCreated == 0 ? "short questions mock"
+                    : "short questions mock" + (shortMocksCreated + 1);
+            createSingleMock(selectedQuestions, mockTestsDir, qualification, topic, mockName, true);
+            shortMocksCreated++;
         }
 
-        System.out.println("Created " + q1To5MocksCreated + " Q1-5 only mock tests");
-        return mockTestNumber;
+        System.out.println("Created " + shortMocksCreated + " short questions mocks");
     }
 
-    private void createMixedMockTests(List<Question> remainingQ1To5, List<Question> q6Questions,
-            File mockTestsDir, String qualification, String topic, int startingMockNumber) throws IOException {
+    private void createMixedMockTests(List<Question> q1To5Questions, List<Question> q6Questions,
+            File mockTestsDir, String qualification, String topic) throws IOException {
         System.out.println("Creating mixed mock tests...");
 
-        List<Question> allRemainingQuestions = new ArrayList<>();
-        allRemainingQuestions.addAll(remainingQ1To5);
-        allRemainingQuestions.addAll(q6Questions);
+        Collections.shuffle(q1To5Questions, new Random());
+        Collections.shuffle(q6Questions, new Random());
 
-        Collections.shuffle(allRemainingQuestions, new Random());
+        int mockTestNumber = 1;
 
-        int mockTestNumber = startingMockNumber;
+        // Continue creating mocks while we have questions
+        while (!q1To5Questions.isEmpty() || !q6Questions.isEmpty()) {
+            List<Question> selectedQuestions = selectQuestionsForMixedMock(q1To5Questions, q6Questions,
+                    targetMarksPerMock);
 
-        while (!allRemainingQuestions.isEmpty()) {
-            List<Question> selectedQuestions = selectQuestionsForMixedMock(allRemainingQuestions, targetMarksPerMock);
-
-            if (selectedQuestions.isEmpty())
+            if (selectedQuestions.isEmpty()) {
                 break;
+            }
 
-            createMockTest(selectedQuestions, mockTestsDir, qualification, topic, mockTestNumber, false);
+            String mockName = "mock" + mockTestNumber;
+            createSingleMock(selectedQuestions, mockTestsDir, qualification, topic, mockName, false);
             mockTestNumber++;
         }
+
+        System.out.println("Created " + (mockTestNumber - 1) + " mixed mock tests");
     }
 
     private List<Question> selectQuestionsForMock(List<Question> availableQuestions, int targetMarks) {
@@ -156,51 +153,70 @@ public class MockTestGenerator {
         return selected;
     }
 
-    private List<Question> selectQuestionsForMixedMock(List<Question> availableQuestions, int targetMarks) {
+    private List<Question> selectQuestionsForMixedMock(List<Question> q1To5Questions, List<Question> q6Questions,
+            int targetMarks) {
         List<Question> selected = new ArrayList<>();
-        Set<String> usedPapers = new HashSet<>();
         int totalMarks = 0;
+        boolean hasQ6Question = false;
+        String usedQ6Paper = null;
 
-        for (int i = availableQuestions.size() - 1; i >= 0 && totalMarks < targetMarks; i--) {
-            Question question = availableQuestions.get(i);
+        // First, try to add one Q6 question if available
+        if (!q6Questions.isEmpty()) {
+            Question q6Question = q6Questions.remove(q6Questions.size() - 1);
+            selected.add(q6Question);
+            totalMarks += q6Question.getMarks();
+            hasQ6Question = true;
+            usedQ6Paper = QuestionUtils.getPaperIdentifier(q6Question);
 
-            if (QuestionUtils.isQuestion6(question.getQuestionNumber())) {
-                String paperIdentifier = QuestionUtils.getPaperIdentifier(question);
-                if (usedPapers.contains(paperIdentifier)) {
-                    continue;
-                }
-                usedPapers.add(paperIdentifier);
-            }
+            System.out.println("Added Q6 question from paper: " + usedQ6Paper +
+                    ", marks so far: " + totalMarks + "/" + targetMarks);
+        }
 
+        // Then fill the rest with Q1-5 questions
+        for (int i = q1To5Questions.size() - 1; i >= 0 && totalMarks < targetMarks; i--) {
+            Question question = q1To5Questions.get(i);
             selected.add(question);
             totalMarks += question.getMarks();
-            availableQuestions.remove(i);
+            q1To5Questions.remove(i);
+
+            System.out.println("Added Q1-5 question: " + question.getQuestionNumber() +
+                    ", marks so far: " + totalMarks + "/" + targetMarks);
+        }
+
+        // If we still have space and no Q6 question was added, try to add one
+        if (!hasQ6Question && !q6Questions.isEmpty() && totalMarks < targetMarks) {
+            Question q6Question = q6Questions.remove(q6Questions.size() - 1);
+            selected.add(q6Question);
+            totalMarks += q6Question.getMarks();
+            usedQ6Paper = QuestionUtils.getPaperIdentifier(q6Question);
+
+            System.out.println("Added Q6 question (second attempt) from paper: " + usedQ6Paper +
+                    ", final marks: " + totalMarks);
         }
 
         return selected;
     }
 
     private void createSingleMock(List<Question> questions, File mockTestsDir, String qualification,
-            String topic, int mockNumber, boolean isQ1To5Only) throws IOException {
+            String topic, String mockName, boolean isQ1To5Only) throws IOException {
         int totalMarks = questions.stream().mapToInt(Question::getMarks).sum();
         int estimatedMinutes = totalMarks * 2;
 
-        String dirName = isQ1To5Only ? "mock" + mockNumber + "_q1-5_only" : "mock" + mockNumber;
-        File mockTestDir = new File(mockTestsDir, dirName);
+        File mockTestDir = new File(mockTestsDir, mockName);
         mockTestDir.mkdirs();
 
+        // Count Q6 questions for verification
+        long q6Count = questions.stream().filter(q -> QuestionUtils.isQuestion6(q.getQuestionNumber())).count();
+        System.out.println("Creating " + mockName + " with " + questions.size() + " questions (" +
+                q6Count + " Q6 questions, " + totalMarks + " marks)");
+
         File coverPageFile = isQ1To5Only
-                ? coverPageCreator.createQ1To5CoverPage(mockNumber, questions, totalMarks, estimatedMinutes,
+                ? coverPageCreator.createQ1To5CoverPage(1, questions, totalMarks, estimatedMinutes,
                         qualification, topic, mockTestDir)
-                : coverPageCreator.createCoverPage(mockNumber, questions, totalMarks, estimatedMinutes, qualification,
+                : coverPageCreator.createCoverPage(1, questions, totalMarks, estimatedMinutes, qualification,
                         topic, mockTestDir);
 
         mockTestPdfCreator.createMockTestPdfs(questions, mockTestDir, coverPageFile);
-    }
-
-    private void createMockTest(List<Question> questions, File mockTestsDir, String qualification,
-            String topic, int mockNumber, boolean isQ1To5Only) throws IOException {
-        createSingleMock(questions, mockTestsDir, qualification, topic, mockNumber, isQ1To5Only);
     }
 
     // Setters

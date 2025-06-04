@@ -87,10 +87,10 @@ public class CoverPageCreator {
         yPosition -= 60;
 
         // Test type (if Q1-5)
-        if (isQ1To5Only) {
-            yPosition = createTestType(contentStream, pageWidth, yPosition);
-            yPosition -= 60;
-        }
+        // if (isQ1To5Only) {
+        // yPosition = createTestType(contentStream, pageWidth, yPosition);
+        // yPosition -= 60;
+        // }
 
         // Test details (improved boxes)
         yPosition = createTestDetails(contentStream, pageWidth, yPosition, questions.size(),

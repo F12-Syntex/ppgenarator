@@ -11,6 +11,7 @@ import org.apache.pdfbox.multipdf.PDFMergerUtility;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
@@ -30,14 +31,14 @@ public class MockTestPdfCreator {
 
     public void createMockTestPdfs(List<Question> questions, File mockTestDir, File coverPageFile) {
         try {
-            // Reset question counter for each mock test
+            // Reset question counter
             questionCounter = 1;
 
             // Create questions PDF with cover page
             PDFMergerUtility questionsMerger = new PDFMergerUtility();
             questionsMerger.setDestinationFileName(new File(mockTestDir, "mock.pdf").getAbsolutePath());
 
-            // Add cover page with headers to all pages
+            // Add cover page with headers
             File processedCoverPage = addHeadersToPdf(coverPageFile, null, 0);
             questionsMerger.addSource(processedCoverPage);
 
@@ -50,13 +51,13 @@ public class MockTestPdfCreator {
             // Add questions with headers
             List<File> tempQuestionFiles = addQuestionsWithHeaders(questions, questionsMerger);
 
-            // Create markschemes PDF for mock test
+            // Create markschemes PDF for this mock
             markschemeCreator.createMockTestMarkscheme(questions, mockTestDir);
 
             // Merge the questions PDF
             if (!tempQuestionFiles.isEmpty() || processedCoverPage != null) {
                 questionsMerger.mergeDocuments(null);
-                System.out.println("Created mock test PDF: " + new File(mockTestDir, "mock.pdf").getAbsolutePath());
+                System.out.println("Created mock PDF: " + new File(mockTestDir, "mock.pdf").getAbsolutePath());
             }
 
             // Clean up temporary files
@@ -147,137 +148,198 @@ public class MockTestPdfCreator {
 
     private File addHeadersToPdf(File pdfFile, Question question, int questionNumber) {
         try {
-            PDDocument document = PDDocument.load(pdfFile);
+            // Load the original document
+            PDDocument originalDoc = PDDocument.load(pdfFile);
 
-            // Create header text based on context
-            String headerText;
-            boolean isQuestionPage = false;
+            // Create a new document for the output
+            PDDocument newDoc = new PDDocument();
 
-            if (question != null) {
-                // For question pages - format: "Question 1 ( paper 2 june 2018 Q3 )"
-                String paperType = question.getPaperIdentifier();
-                String month = QuestionUtils.getFormattedMonth(question).toLowerCase();
-                String originalQuestionNumber = FormattingUtils
-                        .formatOriginalQuestionNumber(question.getQuestionNumber());
+            // Create header text
+            String headerText = createHeaderText(question, questionNumber);
+            boolean isQuestionPage = (question != null);
 
-                headerText = String.format("Question %d ( paper %s %s %s Q%s )",
-                        questionNumber,
-                        paperType,
-                        month,
-                        question.getYear(),
-                        originalQuestionNumber);
-                isQuestionPage = true;
-            } else {
-                // For cover page and extracts - use discrete header
-                headerText = "Best Tutors - Mock Test";
-                isQuestionPage = false;
-            }
+            // Process each page
+            for (int i = 0; i < originalDoc.getNumberOfPages(); i++) {
+                PDPage originalPage = originalDoc.getPage(i);
 
-            // Add header to each page
-            for (int pageIndex = 0; pageIndex < document.getNumberOfPages(); pageIndex++) {
-                PDPage page = document.getPage(pageIndex);
+                // Create new page with same dimensions
+                PDPage newPage = new PDPage(originalPage.getMediaBox());
+                newDoc.addPage(newPage);
 
-                try (PDPageContentStream contentStream = new PDPageContentStream(document, page,
-                        PDPageContentStream.AppendMode.PREPEND, false)) {
+                // First, copy the original page content
+                copyPageContent(originalDoc, newDoc, originalPage, newPage);
 
-                    addHeaderToPage(contentStream, page, headerText, isQuestionPage);
-                }
+                // Then add the header on top
+                addSimpleHeader(newDoc, newPage, headerText, isQuestionPage);
             }
 
             // Save to temporary file
-            File tempFile = File.createTempFile("processed_pdf_", ".pdf");
-            document.save(tempFile);
-            document.close();
+            File tempFile = File.createTempFile("header_", ".pdf");
+            newDoc.save(tempFile);
+
+            // Clean up
+            originalDoc.close();
+            newDoc.close();
 
             return tempFile;
 
-        } catch (IOException e) {
-            System.err.println("Error adding headers to PDF: " + e.getMessage());
-            return null;
+        } catch (Exception e) {
+            System.err.println("Error adding headers: " + e.getMessage());
+            e.printStackTrace();
+            return pdfFile; // Return original if failed
         }
     }
 
-    private void addHeaderToPage(PDPageContentStream contentStream, PDPage page, String headerText,
-            boolean isQuestionPage) throws IOException {
-        float pageWidth = page.getMediaBox().getWidth();
-        float pageHeight = page.getMediaBox().getHeight();
+    private String createHeaderText(Question question, int questionNumber) {
+        if (question != null) {
+            // For question pages
+            String paperType = question.getPaperIdentifier();
+            String month = QuestionUtils.getFormattedMonth(question).toLowerCase();
+            String originalQuestionNumber = FormattingUtils.formatOriginalQuestionNumber(question.getQuestionNumber());
 
-        if (isQuestionPage) {
-            // Bold, prominent header for question pages
-            float margin = 20;
-            float topMargin = 20;
-
-            contentStream.setNonStrokingColor(new PDColor(new float[] { 0f, 0f, 0f }, PDDeviceRGB.INSTANCE)); // Black
-                                                                                                              // color
-            contentStream.beginText();
-            contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12); // Bold font, larger size
-
-            // Center-align the text
-            float textWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(headerText) / 1000 * 12;
-            float textX = (pageWidth - textWidth) / 2; // Center horizontally
-            float textY = pageHeight - topMargin - 12;
-
-            contentStream.newLineAtOffset(textX, textY);
-            contentStream.showText(headerText);
-            contentStream.endText();
+            return String.format("Question %d ( paper %s %s %s Q%s )",
+                    questionNumber, paperType, month, question.getYear(), originalQuestionNumber);
         } else {
-            // Discrete header for cover page and extracts (original style)
-            float margin = 10;
-            float topMargin = 10;
-
-            contentStream.setNonStrokingColor(new PDColor(new float[] { 0.5f, 0.5f, 0.5f }, PDDeviceRGB.INSTANCE)); // Gray
-                                                                                                                    // color
-            contentStream.beginText();
-            contentStream.setFont(PDType1Font.HELVETICA, 9); // Regular font, smaller size
-
-            // Right-align the text
-            float textWidth = PDType1Font.HELVETICA.getStringWidth(headerText) / 1000 * 9;
-            float textX = pageWidth - margin - textWidth;
-            float textY = pageHeight - topMargin - 9;
-
-            contentStream.newLineAtOffset(textX, textY);
-            contentStream.showText(headerText);
-            contentStream.endText();
-
-            // Reset color
-            contentStream.setNonStrokingColor(new PDColor(new float[] { 0f, 0f, 0f }, PDDeviceRGB.INSTANCE));
+            // For cover page and extracts
+            return "Best Tutors - Mock Test";
         }
     }
 
-    private void addHeaderToPage(PDPageContentStream contentStream, PDPage page, String headerText) throws IOException {
-        // Calculate positions - place header prominently at the top center
-        float pageWidth = page.getMediaBox().getWidth();
-        float pageHeight = page.getMediaBox().getHeight();
-        float margin = 20;
-        float topMargin = 20;
+    private void copyPageContent(PDDocument sourceDoc, PDDocument targetDoc, PDPage sourcePage, PDPage targetPage) {
+        try {
+            // Import the page content using PDFBox's built-in functionality
+            if (sourcePage.getContents() != null) {
+                targetPage.setContents(
+                        new org.apache.pdfbox.pdmodel.common.PDStream(targetDoc, sourcePage.getContents()));
+            }
+            targetPage.setResources(sourcePage.getResources());
+            targetPage.setRotation(sourcePage.getRotation());
 
-        // Bold, clear text header at top center
-        contentStream.setNonStrokingColor(new PDColor(new float[] { 0f, 0f, 0f }, PDDeviceRGB.INSTANCE)); // Black color
+            // Copy any annotations if present
+            if (sourcePage.getAnnotations() != null) {
+                for (int j = 0; j < sourcePage.getAnnotations().size(); j++) {
+                    targetPage.getAnnotations().add(sourcePage.getAnnotations().get(j));
+                }
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error copying page content: " + e.getMessage());
+        }
+    }
+
+    private void addSimpleHeader(PDDocument document, PDPage page, String headerText, boolean isQuestionPage) {
+        try (PDPageContentStream contentStream = new PDPageContentStream(document, page,
+                PDPageContentStream.AppendMode.APPEND, true)) {
+
+            // Get page dimensions
+            PDRectangle pageBox = page.getMediaBox();
+            float pageWidth = pageBox.getWidth();
+            float pageHeight = pageBox.getHeight();
+
+            // Simple, fixed positioning
+            if (isQuestionPage) {
+                // Question header - top left, black, bold
+                addQuestionHeader(contentStream, headerText, pageWidth, pageHeight);
+            } else {
+                // Cover/extract header - top right, gray, normal
+                addCoverHeader(contentStream, headerText, pageWidth, pageHeight);
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error adding header to page: " + e.getMessage());
+        }
+    }
+
+    private void addQuestionHeader(PDPageContentStream contentStream, String headerText,
+            float pageWidth, float pageHeight) throws IOException {
+
+        // Fixed positioning values
+        final float LEFT_MARGIN = 20f;
+        final float TOP_MARGIN = 15f;
+        final float FONT_SIZE = 9f;
+
+        // Position calculation
+        float x = LEFT_MARGIN;
+        float y = pageHeight - TOP_MARGIN;
+
+        // Truncate text if too long
+        String displayText = truncateText(headerText, FONT_SIZE, pageWidth - (2 * LEFT_MARGIN));
+
+        // Set up text
         contentStream.beginText();
-        contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12); // Bold font, larger size
+        contentStream.setFont(PDType1Font.HELVETICA_BOLD, FONT_SIZE);
+        contentStream.setNonStrokingColor(0f, 0f, 0f); // Black
+        contentStream.newLineAtOffset(x, y);
+        contentStream.showText(displayText);
+        contentStream.endText();
 
-        // Center-align the text
-        float textWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(headerText) / 1000 * 12;
-        float textX = (pageWidth - textWidth) / 2; // Center horizontally
-        float textY = pageHeight - topMargin - 12;
+        // Add underline
+        float textWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(displayText) / 1000f * FONT_SIZE;
+        contentStream.setLineWidth(0.5f);
+        contentStream.setStrokingColor(0.7f, 0.7f, 0.7f);
+        contentStream.moveTo(x, y - 2);
+        contentStream.lineTo(x + textWidth, y - 2);
+        contentStream.stroke();
 
-        contentStream.newLineAtOffset(textX, textY);
+        System.out.println("Added question header: " + displayText);
+    }
+
+    private void addCoverHeader(PDPageContentStream contentStream, String headerText,
+            float pageWidth, float pageHeight) throws IOException {
+
+        // Fixed positioning values
+        final float RIGHT_MARGIN = 20f;
+        final float TOP_MARGIN = 15f;
+        final float FONT_SIZE = 8f;
+
+        // Calculate position
+        float textWidth = PDType1Font.HELVETICA.getStringWidth(headerText) / 1000f * FONT_SIZE;
+        float x = pageWidth - RIGHT_MARGIN - textWidth;
+        float y = pageHeight - TOP_MARGIN;
+
+        // Set up text
+        contentStream.beginText();
+        contentStream.setFont(PDType1Font.HELVETICA, FONT_SIZE);
+        contentStream.setNonStrokingColor(0.5f, 0.5f, 0.5f); // Gray
+        contentStream.newLineAtOffset(x, y);
         contentStream.showText(headerText);
         contentStream.endText();
+    }
+
+    private String truncateText(String text, float fontSize, float maxWidth) {
+        try {
+            float textWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(text) / 1000f * fontSize;
+
+            if (textWidth <= maxWidth) {
+                return text;
+            }
+
+            // Truncate and add ellipsis
+            String truncated = text;
+            while (textWidth > maxWidth && truncated.length() > 10) {
+                truncated = truncated.substring(0, truncated.length() - 1);
+                textWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(truncated + "...") / 1000f * fontSize;
+            }
+
+            return truncated + "...";
+
+        } catch (Exception e) {
+            return text; // Return original if calculation fails
+        }
     }
 
     private void cleanupTempFiles(List<File> tempQuestionFiles, List<File> tempExtractFiles,
             File coverPageFile, File processedCoverPage) {
         // Clean up temporary question files
         for (File tempFile : tempQuestionFiles) {
-            if (tempFile.exists()) {
+            if (tempFile != null && tempFile.exists()) {
                 tempFile.delete();
             }
         }
 
         // Clean up temporary extract files
         for (File tempFile : tempExtractFiles) {
-            if (tempFile.exists()) {
+            if (tempFile != null && tempFile.exists()) {
                 tempFile.delete();
             }
         }
