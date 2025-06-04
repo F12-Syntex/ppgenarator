@@ -15,6 +15,7 @@ public class Question {
     private String year;
     private ExamBoard board;
     private Qualification qualification;
+    private String paperIdentifier;
 
     public int getMarks() {
 
@@ -24,7 +25,7 @@ public class Question {
             case "question3":
             case "question4":
             case "question5":
-                if(this.qualification == Qualification.A_LEVEL){
+                if (this.qualification == Qualification.A_LEVEL) {
                     return 5;
                 }
 

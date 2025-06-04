@@ -8,6 +8,7 @@ import org.json.JSONException;
 
 import com.ppgenarator.ai.Categorize;
 import com.ppgenarator.config.Configuration;
+import com.ppgenarator.core.topics.TopicCompiler;
 import com.ppgenarator.processor.markscheme.MarkSchemeProcessor;
 import com.ppgenarator.processor.questions.PastPaperProcessor;
 import com.ppgenerator.types.DocumentType;

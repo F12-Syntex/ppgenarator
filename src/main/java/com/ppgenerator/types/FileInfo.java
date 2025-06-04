@@ -62,6 +62,7 @@ public class FileInfo {
                 question.setYear(String.valueOf(year));
                 question.setQuestion(questionFile);
                 question.setMarkScheme(markschemeFile);
+                question.setPaperIdentifier(questionFile.getParentFile().getName());
 
                 questions.add(question);
             }

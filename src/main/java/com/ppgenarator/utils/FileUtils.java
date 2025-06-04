@@ -1,6 +1,7 @@
 package com.ppgenarator.utils;
 
 import java.io.File;
+import java.nio.file.Files;
 
 public class FileUtils {
     private static File[] concatenateArrays(File[] firstArray, File[] secondArray) {
@@ -34,6 +35,19 @@ public class FileUtils {
         }
 
         return files;
+    }
+
+    public static String sanitizeFileName(String input) {
+        return input.replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+    }
+
+    public static String getFileMd5Hash(File file) {
+        try {
+            return org.apache.commons.codec.digest.DigestUtils.md5Hex(Files.readAllBytes(file.toPath()));
+        } catch (Exception e) {
+            System.err.println("Error calculating MD5 hash: " + e.getMessage());
+            return file.getName();
+        }
     }
 
 }
