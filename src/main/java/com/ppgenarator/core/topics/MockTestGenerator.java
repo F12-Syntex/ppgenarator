@@ -278,7 +278,15 @@ public class MockTestGenerator {
     private void createSingleMock(List<Question> questions, File mockTestsDir, String qualification,
             String topic, String mockName, boolean isQ1To5Only) throws IOException {
         int totalMarks = questions.stream().mapToInt(Question::getMarks).sum();
-        int estimatedMinutes = totalMarks * 2;
+        int estimatedMinutes = 0;
+
+        for (Question question : questions) {
+            if (question.isSection2Question()) {
+                estimatedMinutes += 2 * question.getMarks();
+                continue;
+            }
+            estimatedMinutes += question.getMarks();
+        }
 
         File mockTestDir = new File(mockTestsDir, mockName);
         mockTestDir.mkdirs();

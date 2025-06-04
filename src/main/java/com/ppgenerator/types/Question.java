@@ -17,6 +17,10 @@ public class Question {
     private Qualification qualification;
     private String paperIdentifier;
 
+    public boolean isSection2Question() {
+        return this.questionNumber.startsWith("question6");
+    }
+
     public int getMarks() {
 
         switch (questionNumber) {

@@ -15,7 +15,7 @@ public class TopicCompiler {
 
     private File metadataDir;
     private File outputDir;
-    private int targetMarksPerMock = 15;
+    private int targetMarksPerMock = 20;
     private int minimumQ1To5MockTests = 1;
     private boolean createQ1To5OnlyMocks = true;
 
