@@ -366,6 +366,149 @@ public class PdfMerger {
         }
     }
 
+    public void createCombinedQuestionsPdf(List<Question> questions, File outputDir) {
+        try {
+            // Sort questions by year and question number for consistent ordering
+            questions.sort((q1, q2) -> {
+                int yearCompare = q1.getYear().compareTo(q2.getYear());
+                if (yearCompare != 0) {
+                    return yearCompare;
+                }
+                return q1.getQuestionNumber().compareTo(q2.getQuestionNumber());
+            });
+
+            // Create the combined PDF
+            PDFMergerUtility combinedMerger = new PDFMergerUtility();
+            combinedMerger
+                    .setDestinationFileName(new File(outputDir, "all_questions_and_markschemes.pdf").getAbsolutePath());
+
+            List<File> tempFiles = new ArrayList<>();
+            Set<String> processedHashes = new HashSet<>();
+
+            // Add each question followed by its markscheme
+            for (Question question : questions) {
+                // Add question PDF
+                if (question.getQuestion() != null && question.getQuestion().exists()) {
+                    String questionHash = FileUtils.getFileMd5Hash(question.getQuestion());
+
+                    if (!processedHashes.contains(questionHash)) {
+                        processedHashes.add(questionHash);
+
+                        // Create separator page for the question
+                        File questionSeparator = createQuestionSeparatorPage(question, outputDir, "QUESTION");
+                        combinedMerger.addSource(questionSeparator);
+                        tempFiles.add(questionSeparator);
+
+                        // Add the question PDF
+                        PDDocument document = PDDocument.load(question.getQuestion());
+                        File tempQuestionFile = File.createTempFile("temp_question_", ".pdf");
+                        document.save(tempQuestionFile);
+                        document.close();
+
+                        combinedMerger.addSource(tempQuestionFile);
+                        tempFiles.add(tempQuestionFile);
+
+                        // Add markscheme if it exists
+                        if (question.getMarkScheme() != null && question.getMarkScheme().exists()) {
+                            // Create separator page for the markscheme
+                            File markSchemeSeparator = createQuestionSeparatorPage(question, outputDir, "MARKSCHEME");
+                            combinedMerger.addSource(markSchemeSeparator);
+                            tempFiles.add(markSchemeSeparator);
+
+                            // Process and add the markscheme
+                            File processedMarkscheme = processMarkscheme(question.getMarkScheme(), question);
+                            if (processedMarkscheme != null) {
+                                combinedMerger.addSource(processedMarkscheme);
+                                tempFiles.add(processedMarkscheme);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Merge the combined PDF
+            if (!tempFiles.isEmpty()) {
+                combinedMerger.mergeDocuments(null);
+                System.out.println(
+                        "Created combined questions and markschemes PDF: " + combinedMerger.getDestinationFileName());
+            }
+
+            // Clean up temporary files
+            for (File tempFile : tempFiles) {
+                if (tempFile.exists()) {
+                    tempFile.delete();
+                }
+            }
+
+        } catch (IOException e) {
+            System.err.println("Error creating combined questions PDF: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private File createQuestionSeparatorPage(Question question, File outputDir, String pageType) throws IOException {
+        File separatorFile = File.createTempFile("separator_", ".pdf");
+
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            document.addPage(page);
+
+            try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
+                float margin = 50;
+                float pageWidth = page.getMediaBox().getWidth();
+                float pageHeight = page.getMediaBox().getHeight();
+
+                // Draw decorative border
+                contentStream.setLineWidth(2);
+                contentStream.addRect(margin, margin, pageWidth - 2 * margin, pageHeight - 2 * margin);
+                contentStream.stroke();
+
+                // Main header
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 28);
+                String header = pageType;
+                float headerWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(header) / 1000 * 28;
+                contentStream.newLineAtOffset((pageWidth - headerWidth) / 2, pageHeight - margin - 80);
+                contentStream.showText(header);
+                contentStream.endText();
+
+                // Question details
+                float yPos = pageHeight - margin - 150;
+
+                contentStream.beginText();
+                contentStream.setFont(PDType1Font.HELVETICA_BOLD, 18);
+                String questionInfo = FormattingUtils.formatQuestionNumber(question.getQuestionNumber());
+                float questionWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(questionInfo) / 1000 * 18;
+                contentStream.newLineAtOffset((pageWidth - questionWidth) / 2, yPos);
+                contentStream.showText(questionInfo);
+                contentStream.endText();
+
+                yPos -= 40;
+
+                // Additional details
+                String[] details = {
+                        "Year: " + question.getYear(),
+                        "Board: " + question.getBoard().toString(),
+                        "Marks: " + question.getMarks()
+                };
+
+                for (String detail : details) {
+                    contentStream.beginText();
+                    contentStream.setFont(PDType1Font.HELVETICA, 14);
+                    float detailWidth = PDType1Font.HELVETICA.getStringWidth(detail) / 1000 * 14;
+                    contentStream.newLineAtOffset((pageWidth - detailWidth) / 2, yPos);
+                    contentStream.showText(detail);
+                    contentStream.endText();
+                    yPos -= 25;
+                }
+            }
+
+            document.save(separatorFile);
+        }
+
+        return separatorFile;
+    }
+
     // Helper class for question details
     private static class QuestionDetail {
         final String label;

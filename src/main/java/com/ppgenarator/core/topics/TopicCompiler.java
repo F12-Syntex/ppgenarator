@@ -135,18 +135,17 @@ public class TopicCompiler {
             topicDir.mkdirs();
         }
 
-        // Create sub-directories
-        File questionsDir = new File(topicDir, "questions");
-        File markschemesDir = new File(topicDir, "markschemes");
-        File mockTestsDir = new File(topicDir, "mock_tests");
-        questionsDir.mkdirs();
-        markschemesDir.mkdirs();
-        mockTestsDir.mkdirs();
+        // Create the two main directories
+        File allQuestionsDir = new File(topicDir, "all questions");
+        File mocksDir = new File(topicDir, "mocks");
 
-        // Create merged PDFs
-        pdfMerger.createMergedPdfs(topicQuestions, questionsDir, markschemesDir);
+        allQuestionsDir.mkdirs();
+        mocksDir.mkdirs();
 
-        // Create mock tests
-        mockTestGenerator.createMockTests(topicQuestions, mockTestsDir, qualification, topic);
+        // Create combined questions and markschemes PDF in all questions folder
+        pdfMerger.createCombinedQuestionsPdf(topicQuestions, allQuestionsDir);
+
+        // Create mock tests in mocks folder
+        mockTestGenerator.createMockTests(topicQuestions, mocksDir, qualification, topic);
     }
 }
