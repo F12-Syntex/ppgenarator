@@ -104,6 +104,13 @@ public class MockTestGenerator {
             if (selectedQuestions.isEmpty())
                 break;
 
+            // Check if we met the target marks
+            int actualMarks = selectedQuestions.stream().mapToInt(Question::getMarks).sum();
+            if (actualMarks < targetMarksPerMock) {
+                System.out.println("Warning: Short questions mock " + (shortMocksCreated + 1) +
+                        " only has " + actualMarks + " marks (target: " + targetMarksPerMock + ")");
+            }
+
             String mockName = shortMocksCreated == 0 ? "short questions mock"
                     : "short questions mock" + (shortMocksCreated + 1);
             createSingleMock(selectedQuestions, mockTestsDir, qualification, topic, mockName, true);
@@ -131,6 +138,13 @@ public class MockTestGenerator {
                 break;
             }
 
+            // Check if we met the target marks
+            int actualMarks = selectedQuestions.stream().mapToInt(Question::getMarks).sum();
+            if (actualMarks < targetMarksPerMock) {
+                System.out.println("Warning: Mixed mock " + mockTestNumber +
+                        " only has " + actualMarks + " marks (target: " + targetMarksPerMock + ")");
+            }
+
             String mockName = "mock" + mockTestNumber;
             createSingleMock(selectedQuestions, mockTestsDir, qualification, topic, mockName, false);
             mockTestNumber++;
@@ -143,13 +157,37 @@ public class MockTestGenerator {
         List<Question> selected = new ArrayList<>();
         int totalMarks = 0;
 
-        for (int i = availableQuestions.size() - 1; i >= 0 && totalMarks < targetMarks; i--) {
+        // First pass: try to get as close as possible to target marks
+        for (int i = availableQuestions.size() - 1; i >= 0; i--) {
             Question question = availableQuestions.get(i);
-            selected.add(question);
-            totalMarks += question.getMarks();
-            availableQuestions.remove(i);
+            if (totalMarks + question.getMarks() <= targetMarks + 5) { // Allow small overage
+                selected.add(question);
+                totalMarks += question.getMarks();
+                availableQuestions.remove(i);
+
+                if (totalMarks >= targetMarks) {
+                    break; // We've met the target
+                }
+            }
         }
 
+        // Second pass: if we're still under target, add more questions regardless of
+        // overage
+        if (totalMarks < targetMarks && !availableQuestions.isEmpty()) {
+            System.out.println("Second pass: current marks " + totalMarks + ", need " + targetMarks);
+
+            for (int i = availableQuestions.size() - 1; i >= 0 && totalMarks < targetMarks; i--) {
+                Question question = availableQuestions.get(i);
+                selected.add(question);
+                totalMarks += question.getMarks();
+                availableQuestions.remove(i);
+
+                System.out.println("Added question with " + question.getMarks() +
+                        " marks, total now: " + totalMarks);
+            }
+        }
+
+        System.out.println("Selected " + selected.size() + " questions with " + totalMarks + " marks");
         return selected;
     }
 
@@ -172,19 +210,26 @@ public class MockTestGenerator {
                     ", marks so far: " + totalMarks + "/" + targetMarks);
         }
 
-        // Then fill the rest with Q1-5 questions
-        for (int i = q1To5Questions.size() - 1; i >= 0 && totalMarks < targetMarks; i--) {
+        // Fill with Q1-5 questions
+        for (int i = q1To5Questions.size() - 1; i >= 0; i--) {
             Question question = q1To5Questions.get(i);
-            selected.add(question);
-            totalMarks += question.getMarks();
-            q1To5Questions.remove(i);
 
-            System.out.println("Added Q1-5 question: " + question.getQuestionNumber() +
-                    ", marks so far: " + totalMarks + "/" + targetMarks);
+            if (totalMarks < targetMarks || (totalMarks + question.getMarks() <= targetMarks + 5)) {
+                selected.add(question);
+                totalMarks += question.getMarks();
+                q1To5Questions.remove(i);
+
+                System.out.println("Added Q1-5 question: " + question.getQuestionNumber() +
+                        " (" + question.getMarks() + " marks), total: " + totalMarks + "/" + targetMarks);
+
+                if (totalMarks >= targetMarks) {
+                    break;
+                }
+            }
         }
 
-        // If we still have space and no Q6 question was added, try to add one
-        if (!hasQ6Question && !q6Questions.isEmpty() && totalMarks < targetMarks) {
+        // If we still haven't met target and have no Q6 question, try to add one
+        if (totalMarks < targetMarks && !hasQ6Question && !q6Questions.isEmpty()) {
             Question q6Question = q6Questions.remove(q6Questions.size() - 1);
             selected.add(q6Question);
             totalMarks += q6Question.getMarks();
@@ -192,6 +237,39 @@ public class MockTestGenerator {
 
             System.out.println("Added Q6 question (second attempt) from paper: " + usedQ6Paper +
                     ", final marks: " + totalMarks);
+        }
+
+        // Final attempt: if still under target, add more Q6 questions BUT ONLY from the
+        // same paper
+        if (totalMarks < targetMarks && usedQ6Paper != null) {
+            System.out.println("Final attempt: looking for more Q6 questions from paper: " + usedQ6Paper);
+
+            for (int i = q6Questions.size() - 1; i >= 0 && totalMarks < targetMarks; i--) {
+                Question question = q6Questions.get(i);
+
+                // Only add Q6 questions from the same paper
+                if (QuestionUtils.getPaperIdentifier(question).equals(usedQ6Paper)) {
+                    selected.add(question);
+                    totalMarks += question.getMarks();
+                    q6Questions.remove(i);
+
+                    System.out.println("Final attempt: added Q6 question from same paper with " +
+                            question.getMarks() + " marks, total: " + totalMarks);
+                }
+            }
+        }
+
+        // Continue with Q1-5 questions if still needed
+        if (totalMarks < targetMarks) {
+            for (int i = q1To5Questions.size() - 1; i >= 0 && totalMarks < targetMarks; i--) {
+                Question question = q1To5Questions.get(i);
+                selected.add(question);
+                totalMarks += question.getMarks();
+                q1To5Questions.remove(i);
+
+                System.out.println("Final attempt: added Q1-5 question with " + question.getMarks() +
+                        " marks, total: " + totalMarks);
+            }
         }
 
         return selected;
@@ -209,6 +287,12 @@ public class MockTestGenerator {
         long q6Count = questions.stream().filter(q -> QuestionUtils.isQuestion6(q.getQuestionNumber())).count();
         System.out.println("Creating " + mockName + " with " + questions.size() + " questions (" +
                 q6Count + " Q6 questions, " + totalMarks + " marks)");
+
+        // Warning if under target
+        if (totalMarks < targetMarksPerMock) {
+            System.out.println("WARNING: " + mockName + " has only " + totalMarks +
+                    " marks (target: " + targetMarksPerMock + ")");
+        }
 
         File coverPageFile = isQ1To5Only
                 ? coverPageCreator.createQ1To5CoverPage(1, questions, totalMarks, estimatedMinutes,

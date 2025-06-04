@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import com.ppgenarator.utils.FileUtils;
 import com.ppgenerator.types.Question;
@@ -66,6 +67,9 @@ public class TopicCompiler {
 
             System.out.println("Topic compilation complete. Output directory: " + outputDir.getAbsolutePath());
 
+            // Create analysis reports
+            // createTopicAnalysisReport();
+
         } catch (Exception e) {
             System.err.println("Error compiling questions by topic: " + e.getMessage());
             e.printStackTrace();
@@ -97,6 +101,39 @@ public class TopicCompiler {
         }
 
         return questionsByQualificationAndTopic;
+    }
+
+    public void createTopicAnalysisReport() {
+        try {
+            // Load all questions from JSON files
+            List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
+            System.out.println("Loaded " + allQuestions.size() + " questions for analysis report");
+
+            // Group questions by qualification
+            Map<String, List<Question>> questionsByQualification = allQuestions.stream()
+                    .collect(Collectors.groupingBy(
+                            q -> q.getQualification() != null ? q.getQualification().toString().toLowerCase()
+                                    : "unknown"));
+
+            // Create report for each qualification
+            for (Map.Entry<String, List<Question>> entry : questionsByQualification.entrySet()) {
+                String qualification = entry.getKey();
+                List<Question> qualificationQuestions = entry.getValue();
+
+                File qualificationDir = new File(outputDir, qualification);
+                File topicsDir = new File(qualificationDir, "topics");
+
+                if (topicsDir.exists()) {
+                    TopicSummaryReportCreator reportCreator = new TopicSummaryReportCreator();
+                    reportCreator.createTopicSummaryReport(qualificationQuestions, topicsDir, qualification);
+                    System.out.println("Created analysis report for " + qualification);
+                }
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error creating topic analysis reports: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     private void processQualificationsAndTopics(
