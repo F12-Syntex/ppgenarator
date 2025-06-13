@@ -25,7 +25,8 @@ public class Generator {
     public void run() {
 
         //download past papers
-        // downloadPastPapers();
+        downloadPastPapers();
+        
         // Process past papers if needed
         processAllPastPapers();
 
@@ -57,12 +58,12 @@ public class Generator {
      */
     private List<String> getPastPaperUrls() {
         List<String> urls = new ArrayList<>();
-        // urls.add("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-3/");
-        // urls.add("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-1-as/");
-        // urls.add("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-2-as/");
+        urls.add("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-1-as/");
+        urls.add("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-2-as/");
         // Add more URLs as needed
         urls.add("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-1/");
-        // urls.add("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-2/");
+        urls.add("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-2/");
+        urls.add("https://www.physicsandmathstutor.com/past-papers/a-level-economics/edexcel-a-paper-3/");
         return urls;
     }
 
