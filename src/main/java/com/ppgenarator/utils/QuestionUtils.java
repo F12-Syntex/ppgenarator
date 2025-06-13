@@ -10,6 +10,16 @@ public class QuestionUtils {
         return questionNumber != null && questionNumber.toLowerCase().startsWith("question6");
     }
 
+    public static boolean isPaper3Question1or2(String questionNumber) {
+        return questionNumber != null && 
+               (questionNumber.toLowerCase().startsWith("question1") || 
+                questionNumber.toLowerCase().startsWith("question2"));
+    }
+
+    public static boolean isEssayStyleQuestion(String questionNumber) {
+        return isQuestion6(questionNumber) || isPaper3Question1or2(questionNumber);
+    }
+
     public static String getPaperIdentifier(Question question) {
         if (question.getQuestion() == null || !question.getQuestion().exists()) {
             return question.getYear() + "_" + question.getBoard().toString();

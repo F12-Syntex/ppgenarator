@@ -276,7 +276,6 @@ public class MarkschemeCreator {
         Map<String, String> details = Map.of(
                 "Question", FormattingUtils.formatQuestionNumber(question.getQuestionNumber()),
                 "Year", question.getYear(),
-                "Board", question.getBoard().toString(),
                 "Marks", String.valueOf(question.getMarks()));
 
         for (Map.Entry<String, String> entry : details.entrySet()) {

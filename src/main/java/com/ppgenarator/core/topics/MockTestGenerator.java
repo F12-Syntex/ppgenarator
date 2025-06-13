@@ -37,20 +37,20 @@ public class MockTestGenerator {
             // Remove duplicates
             List<Question> uniqueQuestions = removeDuplicates(questions);
 
-            // Separate questions into Q1-5 and Q6
+            // Separate questions into Q1-5 and essay-style questions (Q6, Paper3 Q1/Q2)
             List<Question> q1To5Questions = new ArrayList<>();
-            List<Question> q6Questions = new ArrayList<>();
+            List<Question> essayQuestions = new ArrayList<>();
 
             for (Question question : uniqueQuestions) {
-                if (QuestionUtils.isQuestion6(question.getQuestionNumber())) {
-                    q6Questions.add(question);
+                if (QuestionUtils.isEssayStyleQuestion(question.getQuestionNumber())) {
+                    essayQuestions.add(question);
                 } else {
                     q1To5Questions.add(question);
                 }
             }
 
             System.out.println("Found " + q1To5Questions.size() + " Q1-5 questions and "
-                    + q6Questions.size() + " Q6 questions");
+                    + essayQuestions.size() + " essay-style questions (Q6, Paper3 Q1/Q2)");
 
             // Create short questions mocks if enabled
             if (createQ1To5OnlyMocks && !q1To5Questions.isEmpty()) {
@@ -58,7 +58,7 @@ public class MockTestGenerator {
             }
 
             // Create mixed mock tests with remaining questions
-            createMixedMockTests(new ArrayList<>(q1To5Questions), new ArrayList<>(q6Questions),
+            createMixedMockTests(new ArrayList<>(q1To5Questions), new ArrayList<>(essayQuestions),
                     mockTestsDir, qualification, topic);
 
         } catch (Exception e) {
@@ -124,18 +124,18 @@ public class MockTestGenerator {
         System.out.println("Created " + shortMocksCreated + " short questions mocks");
     }
 
-    private void createMixedMockTests(List<Question> q1To5Questions, List<Question> q6Questions,
+    private void createMixedMockTests(List<Question> q1To5Questions, List<Question> essayQuestions,
             File mockTestsDir, String qualification, String topic) throws IOException {
         System.out.println("Creating mixed mock tests...");
 
         Collections.shuffle(q1To5Questions, new Random());
-        Collections.shuffle(q6Questions, new Random());
+        Collections.shuffle(essayQuestions, new Random());
 
         int mockTestNumber = 1;
 
         // Continue creating mocks while we have questions
-        while (!q1To5Questions.isEmpty() || !q6Questions.isEmpty()) {
-            List<Question> selectedQuestions = selectQuestionsForMixedMock(q1To5Questions, q6Questions,
+        while (!q1To5Questions.isEmpty() || !essayQuestions.isEmpty()) {
+            List<Question> selectedQuestions = selectQuestionsForMixedMock(q1To5Questions, essayQuestions,
                     targetMarksPerMock);
 
             if (selectedQuestions.isEmpty()) {
@@ -195,26 +195,26 @@ public class MockTestGenerator {
         return selected;
     }
 
-    private List<Question> selectQuestionsForMixedMock(List<Question> q1To5Questions, List<Question> q6Questions,
+    private List<Question> selectQuestionsForMixedMock(List<Question> q1To5Questions, List<Question> essayQuestions,
             int targetMarks) {
         List<Question> selected = new ArrayList<>();
         int totalMarks = 0;
-        boolean hasQ6Question = false;
-        String usedQ6Paper = null;
+        boolean hasEssayQuestion = false;
+        String usedEssayPaper = null;
 
-        // First, try to add one Q6 question if available
-        if (!q6Questions.isEmpty()) {
-            Question q6Question = q6Questions.remove(q6Questions.size() - 1);
-            selected.add(q6Question);
-            totalMarks += q6Question.getMarks() * 2;
-            hasQ6Question = true;
-            usedQ6Paper = QuestionUtils.getPaperIdentifier(q6Question);
+        // First, try to add one essay question (Q6, Q1, or Q2 from Paper 3) if available
+        if (!essayQuestions.isEmpty()) {
+            Question essayQuestion = essayQuestions.remove(essayQuestions.size() - 1);
+            selected.add(essayQuestion);
+            totalMarks += essayQuestion.getMarks();
+            hasEssayQuestion = true;
+            usedEssayPaper = QuestionUtils.getPaperIdentifier(essayQuestion);
 
-            System.out.println("Added Q6 question from paper: " + usedQ6Paper
+            System.out.println("Added essay question from paper: " + usedEssayPaper
                     + ", marks so far: " + totalMarks + "/" + targetMarks);
         }
 
-        // Fill with Q1-5 questions
+        // Fill with Q1-5 questions (but not Paper 3 Q1/Q2 which are now in essayQuestions)
         for (int i = q1To5Questions.size() - 1; i >= 0; i--) {
             Question question = q1To5Questions.get(i);
 
@@ -232,32 +232,31 @@ public class MockTestGenerator {
             }
         }
 
-        // If we still haven't met target and have no Q6 question, try to add one
-        if (totalMarks < targetMarks && !hasQ6Question && !q6Questions.isEmpty()) {
-            Question q6Question = q6Questions.remove(q6Questions.size() - 1);
-            selected.add(q6Question);
-            totalMarks += q6Question.getMarks();
-            usedQ6Paper = QuestionUtils.getPaperIdentifier(q6Question);
+        // If we still haven't met target and have no essay question, try to add one
+        if (totalMarks < targetMarks && !hasEssayQuestion && !essayQuestions.isEmpty()) {
+            Question essayQuestion = essayQuestions.remove(essayQuestions.size() - 1);
+            selected.add(essayQuestion);
+            totalMarks += essayQuestion.getMarks();
+            usedEssayPaper = QuestionUtils.getPaperIdentifier(essayQuestion);
 
-            System.out.println("Added Q6 question (second attempt) from paper: " + usedQ6Paper
+            System.out.println("Added essay question (second attempt) from paper: " + usedEssayPaper
                     + ", final marks: " + totalMarks);
         }
 
-        // Final attempt: if still under target, add more Q6 questions BUT ONLY from the
-        // same paper
-        if (totalMarks < targetMarks && usedQ6Paper != null) {
-            System.out.println("Final attempt: looking for more Q6 questions from paper: " + usedQ6Paper);
+        // Final attempt: if still under target, add more essay questions BUT ONLY from the same paper
+        if (totalMarks < targetMarks && usedEssayPaper != null) {
+            System.out.println("Final attempt: looking for more essay questions from paper: " + usedEssayPaper);
 
-            for (int i = q6Questions.size() - 1; i >= 0 && totalMarks < targetMarks; i--) {
-                Question question = q6Questions.get(i);
+            for (int i = essayQuestions.size() - 1; i >= 0 && totalMarks < targetMarks; i--) {
+                Question question = essayQuestions.get(i);
 
-                // Only add Q6 questions from the same paper
-                if (QuestionUtils.getPaperIdentifier(question).equals(usedQ6Paper)) {
+                // Only add essay questions from the same paper
+                if (QuestionUtils.getPaperIdentifier(question).equals(usedEssayPaper)) {
                     selected.add(question);
                     totalMarks += question.getMarks();
-                    q6Questions.remove(i);
+                    essayQuestions.remove(i);
 
-                    System.out.println("Final attempt: added Q6 question from same paper with "
+                    System.out.println("Final attempt: added essay question from same paper with "
                             + question.getMarks() + " marks, total: " + totalMarks);
                 }
             }
@@ -299,10 +298,10 @@ public class MockTestGenerator {
         File mockTestDir = new File(mockTestsDir, mockName);
         mockTestDir.mkdirs();
 
-        // Count Q6 questions for verification
-        long q6Count = questions.stream().filter(q -> QuestionUtils.isQuestion6(q.getQuestionNumber())).count();
+        // Count essay questions for verification
+        long essayCount = questions.stream().filter(q -> QuestionUtils.isEssayStyleQuestion(q.getQuestionNumber())).count();
         System.out.println("Creating " + mockName + " with " + questions.size() + " questions ("
-                + q6Count + " Q6 questions, " + totalMarks + " marks)");
+                + essayCount + " essay questions, " + totalMarks + " marks)");
 
         // Warning if under target
         if (totalMarks < targetMarksPerMock) {

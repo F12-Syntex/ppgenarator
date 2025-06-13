@@ -30,19 +30,32 @@ public class PastPaperProcessor {
                 return;
             }
 
+            // Check if this is Paper 3
+            boolean isPaper3 = isPaper3(document);
+            
             File sectionAFile = new File(pastpaper.getOutputFolder(), "sectionA.pdf");
             File sectionBFile = new File(pastpaper.getOutputFolder(), "sectionB.pdf");
-            File sectionCFile = new File(pastpaper.getOutputFolder(), "sectionC.pdf");
 
-            if (!(sectionAFile.exists() && sectionBFile.exists() && sectionCFile.exists())) {
-                this.processDocument(document);
+            if (!(sectionAFile.exists() && sectionBFile.exists())) {
+                this.processDocument(document, isPaper3);
             }
 
-            SectionAProcessor sectionAProcessor = new SectionAProcessor(sectionAFile, pastpaper.getOutputFolder());
-            SectionBProcessor sectionBProcessor = new SectionBProcessor(sectionBFile, pastpaper.getOutputFolder());
+            if (isPaper3) {
+                // For Paper 3, sections A and B are processed like the old section B
+                // Each section gets its own extract
+                SectionBProcessor sectionAProcessor = new SectionBProcessor(sectionAFile, pastpaper.getOutputFolder(), "1");
+                SectionBProcessor sectionBProcessor = new SectionBProcessor(sectionBFile, pastpaper.getOutputFolder(), "2");
+                
+                sectionAProcessor.process();
+                sectionBProcessor.process();
+            } else {
+                // Normal processing for non-Paper 3
+                SectionAProcessor sectionAProcessor = new SectionAProcessor(sectionAFile, pastpaper.getOutputFolder());
+                SectionBProcessor sectionBProcessor = new SectionBProcessor(sectionBFile, pastpaper.getOutputFolder(), "6");
 
-            sectionAProcessor.process();
-            sectionBProcessor.process();
+                sectionAProcessor.process();
+                sectionBProcessor.process();
+            }
 
         } catch (IOException e) {
             System.err.println("Error processing PDF: " + e.getMessage());
@@ -51,13 +64,25 @@ public class PastPaperProcessor {
         }
     }
 
-    private void processDocument(PDDocument document) throws IOException {
+    private boolean isPaper3(PDDocument document) throws IOException {
+        // Check if this is Paper 3 by looking for indicators in the text
+        PDFTextStripper stripper = new PDFTextStripper();
+        stripper.setStartPage(1);
+        stripper.setEndPage(Math.min(3, document.getNumberOfPages())); // Check first few pages
+        String text = stripper.getText(document);
+        
+        // Check for Paper 3 indicators
+        return text.toLowerCase().contains("paper 3") || 
+               text.toLowerCase().contains("paper three") ||
+               pastpaper.getPaper() == 3;
+    }
+
+    private void processDocument(PDDocument document, boolean isPaper3) throws IOException {
         PDFTextStripper stripper = new PDFTextStripper();
         String text = stripper.getText(document);
 
         // Find section markers
         int sectionBStart = findSectionStart(text, "SECTION B");
-        int sectionCStart = findSectionStart(text, "SECTION C");
 
         // Create output directory
         String outputDir = pastpaper.getOutputFolder().getAbsolutePath();
@@ -75,21 +100,10 @@ public class PastPaperProcessor {
         if (sectionBStart != -1) {
             PDDocument sectionB = new PDDocument();
             startPage = getPageForPosition(document, text, sectionBStart);
-            endPage = (sectionCStart != -1) ? getPageForPosition(document, text, sectionCStart) - 1
-                    : document.getNumberOfPages();
+            endPage = document.getNumberOfPages();
             copyPages(document, sectionB, startPage - 1, endPage - 1);
             sectionB.save(new File(outputDir, "sectionB.pdf"));
             sectionB.close();
-
-            // Create Section C if it exists
-            if (sectionCStart != -1) {
-                PDDocument sectionC = new PDDocument();
-                startPage = getPageForPosition(document, text, sectionCStart);
-                endPage = document.getNumberOfPages();
-                copyPages(document, sectionC, startPage - 1, endPage - 1);
-                sectionC.save(new File(outputDir, "sectionC.pdf"));
-                sectionC.close();
-            }
         }
 
         document.close();

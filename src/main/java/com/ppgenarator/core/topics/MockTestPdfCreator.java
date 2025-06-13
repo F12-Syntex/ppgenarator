@@ -71,20 +71,20 @@ public class MockTestPdfCreator {
         Set<File> extractFiles = new HashSet<>();
 
         for (Question question : questions) {
-            if (QuestionUtils.isQuestion6(question.getQuestionNumber())) {
-                File extractFile = findExtractFile(question);
-                if (extractFile != null && extractFile.exists()) {
-                    extractFiles.add(extractFile);
-                }
+            if (QuestionUtils.isEssayStyleQuestion(question.getQuestionNumber())) {
+                List<File> extractFilesForQuestion = findExtractFiles(question);
+                extractFiles.addAll(extractFilesForQuestion);
             }
         }
 
         return extractFiles;
     }
 
-    private File findExtractFile(Question question) {
+    private List<File> findExtractFiles(Question question) {
+        List<File> extractFiles = new ArrayList<>();
+        
         if (question.getQuestion() == null || !question.getQuestion().exists()) {
-            return null;
+            return extractFiles;
         }
 
         try {
@@ -92,19 +92,33 @@ public class MockTestPdfCreator {
             File paperDir = questionFile.getParentFile();
 
             if (paperDir != null) {
-                File extractFile = new File(paperDir, "extract.pdf");
-                if (extractFile.exists()) {
-                    return extractFile;
+                // For Paper 3 questions 1 and 2, look for specific extract files
+                if (QuestionUtils.isPaper3Question1or2(question.getQuestionNumber())) {
+                    if (question.getQuestionNumber().startsWith("question1")) {
+                        File extract1File = new File(paperDir, "extract1.pdf");
+                        if (extract1File.exists()) {
+                            extractFiles.add(extract1File);
+                        }
+                    } else if (question.getQuestionNumber().startsWith("question2")) {
+                        File extract2File = new File(paperDir, "extract2.pdf");
+                        if (extract2File.exists()) {
+                            extractFiles.add(extract2File);
+                        }
+                    }
+                } else {
+                    // For question 6, look for the standard extract file
+                    File extractFile = new File(paperDir, "extract.pdf");
+                    if (extractFile.exists()) {
+                        extractFiles.add(extractFile);
+                    }
                 }
             }
 
-            return null;
-
         } catch (Exception e) {
-            System.err.println(
-                    "Error finding extract file for question " + question.getQuestionNumber() + ": " + e.getMessage());
-            return null;
+            System.err.println("Error finding extract files for question " + question.getQuestionNumber() + ": " + e.getMessage());
         }
+
+        return extractFiles;
     }
 
     private List<File> addExtractsWithHeaders(Set<File> extractFiles, PDFMergerUtility questionsMerger)
