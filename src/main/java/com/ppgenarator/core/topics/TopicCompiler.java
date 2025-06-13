@@ -3,7 +3,6 @@ package com.ppgenarator.core.topics;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +15,7 @@ import com.ppgenerator.types.Question;
 public class TopicCompiler {
 
     private File metadataDir;
-    private File outputDir;
+    private File outputDir; // This will point to the 'mocks' folder
     private int targetMarksPerMock = 20;
     private int mockTime = 25;
     private int minimumQ1To5MockTests = 1;
@@ -26,15 +25,14 @@ public class TopicCompiler {
     private MockTestGenerator mockTestGenerator;
     private PdfMerger pdfMerger;
 
-    public TopicCompiler(File metadataDir, File outputDir) {
+    public TopicCompiler(File metadataDir, File parentOutputDir) {
         this.metadataDir = metadataDir;
-        this.outputDir = outputDir;
-
-        if (!outputDir.exists()) {
-            outputDir.mkdirs();
+        // All output goes into the 'mocks' subdirectory of the given output directory
+        this.outputDir = new File(parentOutputDir, "mocks");
+        if (!this.outputDir.exists()) {
+            this.outputDir.mkdirs();
         }
 
-        // Initialize services
         this.questionLoader = new QuestionLoader();
         this.mockTestGenerator = new MockTestGenerator(targetMarksPerMock, minimumQ1To5MockTests, createQ1To5OnlyMocks, mockTime);
         this.pdfMerger = new PdfMerger();
@@ -57,15 +55,12 @@ public class TopicCompiler {
 
     public void compileByTopic() {
         try {
-            // Load all questions from JSON files
             List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
             System.out.println("Loaded " + allQuestions.size() + " questions from JSON files");
 
-            // Group questions by individual topics (simplified structure)
-            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic = 
-                groupQuestionsByQualificationAndTopic(allQuestions);
+            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic
+                    = groupQuestionsByQualificationAndTopic(allQuestions);
 
-            // Process each qualification and topic
             processQualificationTopics(questionsByQualificationAndTopic);
 
             System.out.println("Topic compilation complete. Output directory: " + outputDir.getAbsolutePath());
@@ -77,7 +72,6 @@ public class TopicCompiler {
     }
 
     private Map<String, Map<String, List<Question>>> groupQuestionsByQualificationAndTopic(List<Question> allQuestions) {
-        // Structure: qualification -> topic -> questions
         Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic = new HashMap<>();
 
         for (Question question : allQuestions) {
@@ -87,11 +81,6 @@ public class TopicCompiler {
 
             if (question.getTopics() != null && question.getTopics().length > 0) {
                 for (String topic : question.getTopics()) {
-                    // Filter topics based on qualification
-                    if (!isTopicValidForQualification(topic, qualification)) {
-                        continue; // Skip this topic for this qualification
-                    }
-
                     questionsByQualificationAndTopic
                             .computeIfAbsent(qualification, k -> new HashMap<>())
                             .computeIfAbsent(topic, k -> new ArrayList<>())
@@ -101,24 +90,6 @@ public class TopicCompiler {
         }
 
         return questionsByQualificationAndTopic;
-    }
-
-    private boolean isTopicValidForQualification(String topic, String qualification) {
-        String theme = TopicConstants.getThemeFromTopic(topic);
-        
-        switch (qualification.toLowerCase()) {
-            case "as level":
-            case "as":
-                // AS Level only covers Themes 1 and 2
-                return "Theme 1".equals(theme) || "Theme 2".equals(theme);
-            case "a level":
-            case "alevel":
-                // A Level covers Themes 3 and 4
-                return "Theme 3".equals(theme) || "Theme 4".equals(theme);
-            default:
-                // For unknown qualifications, include all themes
-                return true;
-        }
     }
 
     private String convertQualificationName(String qualification) {
@@ -142,13 +113,6 @@ public class TopicCompiler {
         for (String qualification : questionsByQualificationAndTopic.keySet()) {
             Map<String, List<Question>> topicMap = questionsByQualificationAndTopic.get(qualification);
 
-            // Create qualification directory
-            File qualificationDir = new File(outputDir, qualification);
-            if (!qualificationDir.exists()) {
-                qualificationDir.mkdirs();
-            }
-
-            // Process each individual topic
             for (String topic : topicMap.keySet()) {
                 List<Question> topicQuestions = topicMap.get(topic);
 
@@ -156,15 +120,15 @@ public class TopicCompiler {
                         + " in qualification: " + qualification
                         + " with " + topicQuestions.size() + " questions");
 
-                processIndividualTopic(topic, topicQuestions, qualificationDir, qualification);
+                // Output all topics inside the 'mocks' directory
+                processIndividualTopic(topic, topicQuestions, outputDir, qualification);
             }
         }
     }
 
-    private void processIndividualTopic(String topic, List<Question> topicQuestions, File qualificationDir, String qualification)
+    private void processIndividualTopic(String topic, List<Question> topicQuestions, File mocksRootDir, String qualification)
             throws IOException {
 
-        // Remove duplicates based on question identifier
         List<Question> uniqueTopicQuestions = removeDuplicateQuestions(topicQuestions);
 
         if (uniqueTopicQuestions.isEmpty()) {
@@ -172,9 +136,9 @@ public class TopicCompiler {
             return;
         }
 
-        // Create directory for this individual topic
+        // Create directory for this individual topic inside 'mocks'
         String topicDirName = FileUtils.sanitizeFileName(topic);
-        File topicDir = new File(qualificationDir, topicDirName);
+        File topicDir = new File(mocksRootDir, topicDirName);
         if (!topicDir.exists()) {
             topicDir.mkdirs();
         }
@@ -192,15 +156,12 @@ public class TopicCompiler {
         pdfMerger.createCombinedQuestionsPdf(uniqueTopicQuestions, allQuestionsDir);
 
         // Create topic-specific mock tests
-        mockTestGenerator.createTopicSpecificMocks(uniqueTopicQuestions, mocksDir, qualification, 
-                                                 TopicConstants.getSubTopicName(topic), topic);
+        mockTestGenerator.createTopicSpecificMocks(uniqueTopicQuestions, mocksDir, qualification,
+                TopicConstants.getSubTopicName(topic), topic);
 
         System.out.println("Completed processing for " + topic + " (" + qualification + ")");
     }
 
-    /**
-     * Remove duplicate questions based on question identifier
-     */
     private List<Question> removeDuplicateQuestions(List<Question> questions) {
         Map<String, Question> uniqueQuestions = new HashMap<>();
 
@@ -218,9 +179,6 @@ public class TopicCompiler {
         return result;
     }
 
-    /**
-     * Get a unique identifier for a question
-     */
     private String getQuestionIdentifier(Question question) {
         if (question.getQuestion() != null && question.getQuestion().exists()) {
             return FileUtils.getFileMd5Hash(question.getQuestion());
@@ -230,22 +188,20 @@ public class TopicCompiler {
 
     public void createTopicAnalysisReport() {
         try {
-            // Load all questions from JSON files
             List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
             System.out.println("Loaded " + allQuestions.size() + " questions for analysis report");
 
-            // Group questions by qualification
             Map<String, List<Question>> questionsByQualification = allQuestions.stream()
                     .collect(Collectors.groupingBy(
                             q -> q.getQualification() != null ? convertQualificationName(q.getQualification().toString().toLowerCase())
                             : "unknown"));
 
-            // Create report for each qualification
             for (Map.Entry<String, List<Question>> entry : questionsByQualification.entrySet()) {
                 String qualification = entry.getKey();
                 List<Question> qualificationQuestions = entry.getValue();
 
-                File qualificationDir = new File(outputDir, qualification);
+                // Write the report directly to the 'mocks' directory
+                File qualificationDir = outputDir;
 
                 if (qualificationDir.exists()) {
                     TopicSummaryReportCreator reportCreator = new TopicSummaryReportCreator();
@@ -262,13 +218,11 @@ public class TopicCompiler {
 
     public void generateAllTopicMocks() {
         try {
-            // Load all questions from JSON files
             List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
             System.out.println("Loaded " + allQuestions.size() + " questions for comprehensive topic mock generation");
 
-            // Group by qualification and individual topics
-            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic = 
-                groupQuestionsByQualificationAndTopic(allQuestions);
+            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic
+                    = groupQuestionsByQualificationAndTopic(allQuestions);
 
             for (Map.Entry<String, Map<String, List<Question>>> qualEntry : questionsByQualificationAndTopic.entrySet()) {
                 String qualification = qualEntry.getKey();
@@ -279,13 +233,10 @@ public class TopicCompiler {
                     List<Question> topicQuestions = topicEntry.getValue();
 
                     if (!topicQuestions.isEmpty()) {
-                        // Remove duplicates
                         List<Question> uniqueQuestions = removeDuplicateQuestions(topicQuestions);
 
-                        // Create directory structure for individual topics
-                        File topicDir = new File(outputDir, "individual_topics" + File.separator + 
-                                               qualification + File.separator + 
-                                               FileUtils.sanitizeFileName(topic));
+                        // Create directory structure for individual topics under 'mocks'
+                        File topicDir = new File(outputDir, FileUtils.sanitizeFileName(topic));
                         topicDir.mkdirs();
 
                         File mocksDir = new File(topicDir, "mocks");
@@ -294,15 +245,13 @@ public class TopicCompiler {
                         File allQuestionsDir = new File(topicDir, "all questions");
                         allQuestionsDir.mkdirs();
 
-                        // Create combined PDF for all topic questions
                         pdfMerger.createCombinedQuestionsPdf(uniqueQuestions, allQuestionsDir);
 
-                        // Generate topic-specific mocks
-                        mockTestGenerator.createTopicSpecificMocks(uniqueQuestions, mocksDir, 
-                                                                 qualification, topic, topic);
-                        
-                        System.out.println("Generated individual topic resources for " + topic + " (" + qualification + 
-                                         ") with " + uniqueQuestions.size() + " questions");
+                        mockTestGenerator.createTopicSpecificMocks(uniqueQuestions, mocksDir,
+                                qualification, topic, topic);
+
+                        System.out.println("Generated individual topic resources for " + topic + " (" + qualification
+                                + ") with " + uniqueQuestions.size() + " questions");
                     }
                 }
             }
@@ -319,10 +268,10 @@ public class TopicCompiler {
     public void generateTopicOverview() {
         try {
             List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
-            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic = 
-                groupQuestionsByQualificationAndTopic(allQuestions);
+            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic
+                    = groupQuestionsByQualificationAndTopic(allQuestions);
 
-            // Create overview directory
+            // Create overview directory as 'mocks/topic_overview'
             File overviewDir = new File(outputDir, "topic_overview");
             overviewDir.mkdirs();
 
@@ -331,14 +280,13 @@ public class TopicCompiler {
                 Map<String, List<Question>> topicMap = qualEntry.getValue();
 
                 File qualOverviewFile = new File(overviewDir, qualification + "_topic_overview.txt");
-                
+
                 try (java.io.PrintWriter writer = new java.io.PrintWriter(qualOverviewFile)) {
                     writer.println("=== " + qualification.toUpperCase() + " TOPIC OVERVIEW ===");
                     writer.println("Generated: " + java.time.LocalDateTime.now());
                     writer.println("Total topics: " + topicMap.size());
                     writer.println();
 
-                    // Sort topics by theme
                     List<Map.Entry<String, List<Question>>> sortedTopics = topicMap.entrySet().stream()
                             .sorted(Map.Entry.comparingByKey())
                             .collect(Collectors.toList());
@@ -347,7 +295,7 @@ public class TopicCompiler {
                     for (Map.Entry<String, List<Question>> topicEntry : sortedTopics) {
                         String topic = topicEntry.getKey();
                         List<Question> questions = removeDuplicateQuestions(topicEntry.getValue());
-                        
+
                         String theme = TopicConstants.getThemeFromTopic(topic);
                         if (!theme.equals(currentTheme)) {
                             currentTheme = theme;
@@ -356,8 +304,8 @@ public class TopicCompiler {
                         }
 
                         int totalMarks = questions.stream().mapToInt(Question::getMarks).sum();
-                        writer.printf("%-50s | %3d questions | %4d total marks%n", 
-                                     topic, questions.size(), totalMarks);
+                        writer.printf("%-50s | %3d questions | %4d total marks%n",
+                                topic, questions.size(), totalMarks);
                     }
                 }
 

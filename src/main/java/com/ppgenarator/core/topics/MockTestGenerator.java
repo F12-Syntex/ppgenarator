@@ -18,7 +18,7 @@ public class MockTestGenerator {
     private int minimumQ1To5MockTests;
     private boolean createQ1To5OnlyMocks;
     private int mockTime;
-    private int maxMocksPerTopic = 3; // Maximum number of mocks per topic/major topic
+    private int maxMocksPerTopic = 1; // Maximum number of mocks per topic/major topic
     
     // Fixed time periods for mocks (in minutes)
     private static final int[] TARGET_TIMES = {25, 30, 35};

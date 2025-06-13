@@ -26,15 +26,11 @@ public class Generator {
 
         //download past papers
         // downloadPastPapers();
-
         // Process past papers if needed
         processAllPastPapers();
 
         // Compile topics from existing processed data (simplified individual topic structure)
         compileTopics();
-
-        // Generate individual topic mocks and resources
-        generateIndividualTopicResources();
 
         // Create comprehensive topic analysis
         createTopicAnalysis();
@@ -212,26 +208,6 @@ public class Generator {
     }
 
     /**
-     * Generates individual topic resources and mocks
-     */
-    private void generateIndividualTopicResources() {
-        System.out.println("Generating individual topic resources and mocks...");
-
-        File output = new File(Configuration.OUTPUT_DIRECTORY);
-        File outputDir = new File(Configuration.OUTPUT_DIRECTORY, "individual_topics");
-
-        if (!output.exists()) {
-            System.err.println("Output directory does not exist: " + Configuration.OUTPUT_DIRECTORY);
-            return;
-        }
-
-        TopicCompiler topicCompiler = new TopicCompiler(output, outputDir);
-        topicCompiler.generateAllTopicMocks();
-
-        System.out.println("Individual topic resource generation completed.");
-    }
-
-    /**
      * Creates comprehensive topic analysis and reports
      */
     private void createTopicAnalysis() {
@@ -245,10 +221,10 @@ public class Generator {
         }
 
         TopicCompiler topicCompiler = new TopicCompiler(output, output);
-        
+
         // Generate topic overview
         topicCompiler.generateTopicOverview();
-        
+
         // Generate analysis reports
         topicCompiler.createTopicAnalysisReport();
 

@@ -5,11 +5,10 @@ import java.util.List;
 
 public class TopicConstants {
 
-    // Constants - Much more lenient for comprehensive topic coverage
-    public static final int BATCH_SIZE = 3;
-    public static final int MAX_TOPICS_PER_QUESTION = 4;
-    public static final double KEYWORD_THRESHOLD = 1;
-    public static final double SECONDARY_TOPIC_THRESHOLD = 0.45;
+    public static final int BATCH_SIZE = 10;  // Increased to 5 for better context
+    public static final int MAX_TOPICS_PER_QUESTION = 3;  // Reduced to 3 for more focused topic assignment
+    public static final double KEYWORD_THRESHOLD = 1.5;  // Increased to 1.5 for stronger primary topic matches 
+    public static final double SECONDARY_TOPIC_THRESHOLD = 0.6;  // Increased to 0.6 for more relevant secondary topics
 
     // A-level Economics specification topics (comprehensive list)
     public static final String[] DEFAULT_TOPICS = {

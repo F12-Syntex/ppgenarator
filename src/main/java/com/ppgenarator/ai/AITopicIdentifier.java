@@ -44,24 +44,24 @@ public class AITopicIdentifier {
         }
 
         List<String> relevantTopics = new ArrayList<>();
-        
+
         for (String topic : allTopics) {
             String theme = TopicConstants.getThemeFromTopic(topic);
-            
+
             if (isTopicRelevantForQualificationAndPaper(theme, qualification, paper)) {
                 relevantTopics.add(topic);
             }
         }
-        
-        System.out.println("Filtered topics for " + qualification + " Paper " + paper + ": " + 
-                         relevantTopics.size() + " out of " + allTopics.length + " total topics");
-        
+
+        System.out.println("Filtered topics for " + qualification + " Paper " + paper + ": "
+                + relevantTopics.size() + " out of " + allTopics.length + " total topics");
+
         if (relevantTopics.isEmpty()) {
-            System.out.println("WARNING: No relevant topics found for " + qualification + " Paper " + paper + 
-                             ". Using fallback filtering.");
+            System.out.println("WARNING: No relevant topics found for " + qualification + " Paper " + paper
+                    + ". Using fallback filtering.");
             return getRelevantTopicsForQualification(allTopics, qualification, paper);
         }
-        
+
         return relevantTopics.toArray(new String[0]);
     }
 
@@ -70,7 +70,7 @@ public class AITopicIdentifier {
      */
     private boolean isTopicRelevantForQualificationAndPaper(String theme, String qualification, int paper) {
         String normalizedQual = qualification.toLowerCase();
-        
+
         if (normalizedQual.contains("as")) {
             // AS Level paper-specific filtering
             switch (paper) {
@@ -90,14 +90,14 @@ public class AITopicIdentifier {
                 case 2:
                     return "Theme 2".equals(theme) || "Theme 4".equals(theme);
                 case 3:
-                    return "Theme 1".equals(theme) || "Theme 2".equals(theme) || 
-                           "Theme 3".equals(theme) || "Theme 4".equals(theme);
+                    return "Theme 1".equals(theme) || "Theme 2".equals(theme)
+                            || "Theme 3".equals(theme) || "Theme 4".equals(theme);
                 default:
                     // Fallback: A Level covers Themes 3 and 4 primarily
                     return "Theme 3".equals(theme) || "Theme 4".equals(theme);
             }
         }
-        
+
         // For unknown qualifications, include all themes
         return true;
     }
@@ -111,10 +111,10 @@ public class AITopicIdentifier {
         }
 
         List<String> relevantTopics = new ArrayList<>();
-        
+
         for (String topic : allTopics) {
             String theme = TopicConstants.getThemeFromTopic(topic);
-            
+
             switch (qualification.toLowerCase()) {
                 case "as":
                 case "as level":
@@ -128,8 +128,8 @@ public class AITopicIdentifier {
                 case "a_level":
                 case "alevel":
                     // A Level covers Themes 3 and 4 primarily, but can include 1 and 2 for Paper 3
-                    if ("Theme 3".equals(theme) || "Theme 4".equals(theme) ||
-                        (paper == 3 && ("Theme 1".equals(theme) || "Theme 2".equals(theme)))) {
+                    if ("Theme 3".equals(theme) || "Theme 4".equals(theme)
+                            || (paper == 3 && ("Theme 1".equals(theme) || "Theme 2".equals(theme)))) {
                         relevantTopics.add(topic);
                     }
                     break;
@@ -138,7 +138,7 @@ public class AITopicIdentifier {
                     break;
             }
         }
-        
+
         return relevantTopics.toArray(new String[0]);
     }
 
@@ -191,12 +191,12 @@ public class AITopicIdentifier {
         StringBuilder batchPrompt = new StringBuilder();
         batchPrompt.append(
                 "You are an expert A-level Economics examiner who specializes in categorizing exam questions based on the official Edexcel A-level Economics specification.\n\n");
-        
+
         // Add qualification and paper context
         if (qualification != null && paper > 0) {
             batchPrompt.append("IMPORTANT: You are categorizing questions for ").append(qualification.toUpperCase())
-                      .append(" PAPER ").append(paper).append(".\n");
-            
+                    .append(" PAPER ").append(paper).append(".\n");
+
             String paperContext = getPaperContext(qualification, paper);
             batchPrompt.append(paperContext).append("\n");
         } else if (qualification != null) {
@@ -208,7 +208,7 @@ public class AITopicIdentifier {
             }
             batchPrompt.append("\n");
         }
-        
+
         batchPrompt.append("I'll provide you with ").append(questions.size()).append(" economics exam questions.\n");
         batchPrompt.append(
                 "For each question, identify ALL relevant economic topics that could be applied or tested. BE COMPREHENSIVE AND INCLUSIVE - if a topic is even reasonably related, include it.\n\n");
@@ -244,7 +244,7 @@ public class AITopicIdentifier {
         }
 
         batchPrompt.append(
-                "For each question, respond with the question number and ALL relevant specification topics (be comprehensive!).\n");
+                "Respond with the most relevant topic(s), separated by commas if multiple. Be strict and selective.\",\n");
         batchPrompt.append(
                 "Format: 'Question 1: 1.2.3 Price, income and cross elasticities of demand, 1.2.2 Demand'\n");
         batchPrompt.append("CRITICAL: Use exact specification codes and be VERY COMPREHENSIVE in coverage. ONLY use topics from the provided list for this specific paper. Include all topics that would help a student understand and answer the question effectively.");
@@ -254,14 +254,14 @@ public class AITopicIdentifier {
 
     private String createSingleQuestionPrompt(String cleanedText) {
         StringBuilder prompt = new StringBuilder();
-        
+
         prompt.append("You are an expert A-level Economics examiner. Analyze this economics exam question to identify ALL relevant economic concepts.\n\n");
-        
+
         // Add qualification and paper context
         if (qualification != null && paper > 0) {
             prompt.append("IMPORTANT: You are categorizing a question for ").append(qualification.toUpperCase())
-                  .append(" PAPER ").append(paper).append(".\n");
-            
+                    .append(" PAPER ").append(paper).append(".\n");
+
             String paperContext = getPaperContext(qualification, paper);
             prompt.append(paperContext).append("\n");
         } else if (qualification != null) {
@@ -273,9 +273,9 @@ public class AITopicIdentifier {
             }
             prompt.append("\n");
         }
-        
+
         prompt.append("QUESTION:\n").append(cleanedText).append("\n\n");
-        
+
         prompt.append("ENHANCED INSTRUCTIONS:\n");
         prompt.append("1. IGNORE contextual elements like 'refer to the extract' or 'using the data' - focus on the CORE economic concepts\n");
         prompt.append("2. What is the PRIMARY economic knowledge area a student needs to answer this question?\n");
@@ -285,7 +285,7 @@ public class AITopicIdentifier {
         prompt.append("6. Be inclusive - if a topic is reasonably related, include it\n");
         prompt.append("7. Consider cross-connections between economic concepts\n");
         prompt.append("8. ONLY select from this list for this specific paper:\n");
-        
+
         for (String topic : topics) {
             prompt.append("- ").append(topic).append("\n");
         }
@@ -293,7 +293,7 @@ public class AITopicIdentifier {
 
         // Add paper-specific examples
         prompt.append(getPaperSpecificExamples(qualification, paper));
-        
+
         prompt.append("\nRespond with ALL relevant topics, separated by commas. Be comprehensive and inclusive, but ONLY use topics from the provided list for this specific paper.");
 
         return prompt.toString();
@@ -301,7 +301,7 @@ public class AITopicIdentifier {
 
     private String getPaperContext(String qualification, int paper) {
         String normalizedQual = qualification.toLowerCase();
-        
+
         if (normalizedQual.contains("as")) {
             switch (paper) {
                 case 1:
@@ -323,14 +323,14 @@ public class AITopicIdentifier {
                     return "A Level covers Themes 3 and 4 primarily, with Themes 1-2 for Paper 3.";
             }
         }
-        
+
         return "Standard economics specification coverage.";
     }
 
     private String getPaperSpecificExamples(String qualification, int paper) {
         StringBuilder examples = new StringBuilder();
         String normalizedQual = qualification != null ? qualification.toLowerCase() : "";
-        
+
         if (normalizedQual.contains("as")) {
             switch (paper) {
                 case 1:
@@ -380,12 +380,13 @@ public class AITopicIdentifier {
             examples.append("- Question asking to calculate PED and discuss revenue implications → Topics: elasticity, demand and supply\n");
             examples.append("- Question about market structures and efficiency → Topics: market structures, efficiency, government intervention\n");
         }
-        
+
         return examples.toString();
     }
 
     /**
-     * Parse multiple topic assignments from the AI response with enhanced handling
+     * Parse multiple topic assignments from the AI response with enhanced
+     * handling
      */
     private Map<Integer, String[]> parseMultipleTopicAssignments(String response, int expectedCount) {
         Map<Integer, String[]> results = new HashMap<>();
