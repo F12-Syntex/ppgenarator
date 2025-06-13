@@ -38,7 +38,13 @@ public class FileUtils {
     }
 
     public static String sanitizeFileName(String input) {
-        return input.replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+        // For specification topics, preserve the structure but make it file-system safe
+        if (input.matches("\\d+\\.\\d+.*")) {
+            // This is a specification topic, preserve the format but make it safe
+            return input.replaceAll("[<>:\"/\\\\|?*]", "").trim();
+        }
+        // For other inputs, use the old method
+        return input.replaceAll("[^a-zA-Z0-9_\\s\\.]", "_").toLowerCase();
     }
 
     public static String getFileMd5Hash(File file) {
@@ -49,5 +55,4 @@ public class FileUtils {
             return file.getName();
         }
     }
-
 }

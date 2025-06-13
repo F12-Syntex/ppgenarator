@@ -26,7 +26,6 @@ public class Categorize {
     private final TextProcessor textProcessor;
     private final TopicValidator topicValidator;
     private final TopicMatcher topicMatcher;
-    private final AITopicIdentifier aiTopicIdentifier;
 
     // Tracking for quality control
     private final Map<String, Integer> topicDistribution = new HashMap<>();
@@ -56,7 +55,6 @@ public class Categorize {
         this.textProcessor = new TextProcessor();
         this.topicValidator = new TopicValidator(topics, keywordManager);
         this.topicMatcher = new TopicMatcher(keywordManager, textProcessor);
-        this.aiTopicIdentifier = new AITopicIdentifier(topics);
     }
 
     /**
@@ -126,21 +124,106 @@ public class Categorize {
             loadQuestionText(question);
         }
 
-        // Process in batches for topic identification
-        for (int i = 0; i < questions.size(); i += TopicConstants.BATCH_SIZE) {
-            int endIndex = Math.min(i + TopicConstants.BATCH_SIZE, questions.size());
-            List<Question> batch = questions.subList(i, endIndex);
+        // Group questions by qualification and paper for targeted categorization
+        Map<String, Map<Integer, List<Question>>> questionsByQualificationAndPaper = 
+            groupQuestionsByQualificationAndPaper(questions);
 
-            System.out.println("Processing batch of " + batch.size() + " questions for enhanced topic identification");
-            identifyTopicsForBatch(batch);
+        // Process each qualification and paper group separately
+        for (Map.Entry<String, Map<Integer, List<Question>>> qualEntry : questionsByQualificationAndPaper.entrySet()) {
+            String qualification = qualEntry.getKey();
+            Map<Integer, List<Question>> paperGroups = qualEntry.getValue();
 
-            // Add a small delay to avoid rate limiting
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            for (Map.Entry<Integer, List<Question>> paperEntry : paperGroups.entrySet()) {
+                int paper = paperEntry.getKey();
+                List<Question> paperQuestions = paperEntry.getValue();
+
+                System.out.println("Processing " + paperQuestions.size() + " questions for " + 
+                                 qualification + " Paper " + paper);
+
+                // Process in batches for topic identification with qualification and paper-specific context
+                for (int i = 0; i < paperQuestions.size(); i += TopicConstants.BATCH_SIZE) {
+                    int endIndex = Math.min(i + TopicConstants.BATCH_SIZE, paperQuestions.size());
+                    List<Question> batch = paperQuestions.subList(i, endIndex);
+
+                    System.out.println("Processing batch of " + batch.size() + " questions for " + 
+                                     qualification + " Paper " + paper + " with enhanced topic identification");
+                    identifyTopicsForBatch(batch, qualification, paper);
+
+                    // Add a small delay to avoid rate limiting
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
             }
         }
+    }
+
+    /**
+     * Group questions by qualification and paper
+     */
+    private Map<String, Map<Integer, List<Question>>> groupQuestionsByQualificationAndPaper(List<Question> questions) {
+        Map<String, Map<Integer, List<Question>>> questionsByQualificationAndPaper = new HashMap<>();
+
+        for (Question question : questions) {
+            String qualification = question.getQualification() != null 
+                ? question.getQualification().toString().toLowerCase() 
+                : "unknown";
+            
+            // Normalize qualification names
+            switch (qualification) {
+                case "a_level":
+                    qualification = "a level";
+                    break;
+                case "as":
+                    qualification = "as level";
+                    break;
+            }
+
+            // Extract paper number from the question
+            int paper = extractPaperNumber(question);
+
+            questionsByQualificationAndPaper
+                .computeIfAbsent(qualification, k -> new HashMap<>())
+                .computeIfAbsent(paper, k -> new ArrayList<>())
+                .add(question);
+        }
+
+        return questionsByQualificationAndPaper;
+    }
+
+    /**
+     * Extract paper number from question
+     */
+    private int extractPaperNumber(Question question) {
+        // Try to get paper number from the question's paper identifier
+        String paperIdentifier = question.getPaperIdentifier();
+        if (paperIdentifier != null) {
+            // Look for paper number in the identifier
+            if (paperIdentifier.toLowerCase().contains("paper1") || paperIdentifier.toLowerCase().contains("paper_1")) {
+                return 1;
+            } else if (paperIdentifier.toLowerCase().contains("paper2") || paperIdentifier.toLowerCase().contains("paper_2")) {
+                return 2;
+            } else if (paperIdentifier.toLowerCase().contains("paper3") || paperIdentifier.toLowerCase().contains("paper_3")) {
+                return 3;
+            }
+        }
+
+        // Try to extract from file path if available
+        if (question.getQuestion() != null) {
+            String path = question.getQuestion().getAbsolutePath().toLowerCase();
+            if (path.contains("paper1") || path.contains("paper_1")) {
+                return 1;
+            } else if (path.contains("paper2") || path.contains("paper_2")) {
+                return 2;
+            } else if (path.contains("paper3") || path.contains("paper_3")) {
+                return 3;
+            }
+        }
+
+        // Default to paper 1 if we can't determine
+        return 1;
     }
 
     /**
@@ -163,9 +246,9 @@ public class Categorize {
     }
 
     /**
-     * Identify topics for a batch of questions with enhanced coverage
+     * Identify topics for a batch of questions with enhanced coverage and qualification/paper context
      */
-    private void identifyTopicsForBatch(List<Question> questions) {
+    private void identifyTopicsForBatch(List<Question> questions, String qualification, int paper) {
         // Filter out questions that already have topics
         List<Question> questionsNeedingTopics = questions.stream()
                 .filter(q -> q.getTopics() == null || q.getTopics().length == 0)
@@ -176,14 +259,17 @@ public class Categorize {
             return;
         }
 
+        // Create qualification and paper-specific AI topic identifier
+        AITopicIdentifier aiTopicIdentifier = new AITopicIdentifier(topics, qualification, paper);
+
         // Try AI-based batch processing first
         Map<Integer, String[]> topicAssignments = aiTopicIdentifier.identifyTopicsForBatch(questionsNeedingTopics);
 
         // If batch processing failed, process individually
         if (topicAssignments.isEmpty()) {
-            System.out.println("Batch parsing failed. Processing individually...");
+            System.out.println("Batch parsing failed for " + qualification + " Paper " + paper + ". Processing individually...");
             for (Question question : questionsNeedingTopics) {
-                identifyTopicsForSingleQuestion(question);
+                identifyTopicsForSingleQuestion(question, qualification, paper);
             }
             return;
         }
@@ -200,22 +286,25 @@ public class Categorize {
 
                 question.setTopics(validatedTopics);
                 System.out.println("Assigned " + validatedTopics.length + " topics " + Arrays.toString(validatedTopics) +
-                        " to question " + question.getQuestionNumber());
+                        " to " + qualification + " Paper " + paper + " question " + question.getQuestionNumber());
             } else {
                 // If we couldn't get topics from batch processing, try individual processing
-                identifyTopicsForSingleQuestion(question);
+                identifyTopicsForSingleQuestion(question, qualification, paper);
             }
         }
     }
 
     /**
-     * Identify topics for a single question with enhanced coverage
+     * Identify topics for a single question with enhanced coverage and qualification/paper context
      */
-    private void identifyTopicsForSingleQuestion(Question question) {
-        System.out.println("Processing individual question: " + question.getQuestionNumber());
+    private void identifyTopicsForSingleQuestion(Question question, String qualification, int paper) {
+        System.out.println("Processing individual " + qualification + " Paper " + paper + " question: " + question.getQuestionNumber());
 
         // Clean the question text by removing misleading phrases
         String cleanedText = textProcessor.removeIgnorePhrases(question.getQuestionText());
+
+        // Create qualification and paper-specific AI topic identifier
+        AITopicIdentifier aiTopicIdentifier = new AITopicIdentifier(topics, qualification, paper);
 
         // Try AI-based approach
         String[] suggestedTopics = aiTopicIdentifier.identifyTopicsForSingleQuestion(cleanedText);

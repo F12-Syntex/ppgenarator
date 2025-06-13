@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class TopicMatcher {
+
     private final TopicKeywordManager keywordManager;
     private final TextProcessor textProcessor;
 
@@ -15,7 +16,8 @@ public class TopicMatcher {
     }
 
     /**
-     * Find topics based on keywords with enhanced scoring and broader coverage
+     * Find topics based on keywords with very lenient scoring and comprehensive
+     * coverage
      */
     public String[] findStrictTopicsByKeywords(String questionText) {
         if (questionText == null || questionText.isEmpty()) {
@@ -27,7 +29,7 @@ public class TopicMatcher {
         Map<String, List<String>> topicKeywords = keywordManager.getTopicKeywords();
         Map<String, List<String>> conceptRelationships = keywordManager.getConceptRelationships();
 
-        // Score each topic based on keyword matches with enhanced criteria
+        // Score each topic based on keyword matches with very lenient criteria
         for (Map.Entry<String, List<String>> entry : topicKeywords.entrySet()) {
             String topic = entry.getKey();
             List<String> keywords = entry.getValue();
@@ -37,12 +39,12 @@ public class TopicMatcher {
 
             for (String keyword : keywords) {
                 String cleanKeyword = keyword.toLowerCase();
-                if (containsKeyword(questionText, cleanKeyword)) {
-                    double weight = 1.0 + (Math.min(cleanKeyword.length(), 15) / 10.0);
+                if (containsKeywordVeryFlexibly(questionText, cleanKeyword)) {
+                    double weight = 0.5 + (Math.min(cleanKeyword.length(), 15) / 20.0); // Lower base weight
                     score += weight;
 
                     // Count significant matches (longer keywords)
-                    if (cleanKeyword.length() > 4) { // Reduced from 5
+                    if (cleanKeyword.length() > 3) { // Reduced from 4
                         significantMatches++;
                     }
                 }
@@ -51,54 +53,71 @@ public class TopicMatcher {
             // Check for related concepts with enhanced scoring
             for (Map.Entry<String, List<String>> conceptEntry : conceptRelationships.entrySet()) {
                 String concept = conceptEntry.getKey();
-                if (questionText.contains(concept.toLowerCase()) && 
-                    conceptEntry.getValue().contains(topic)) {
-                    score += 1.5; // Bonus for related concepts
+                if (questionText.contains(concept.toLowerCase())
+                        && conceptEntry.getValue().contains(topic)) {
+                    score += 1.0; // Bonus for related concepts
                     significantMatches++;
                 }
             }
 
-            // Direct mention bonus (reduced to balance with other factors)
+            // Direct mention bonus (moderate bonus)
             if (questionText.contains(topic.toLowerCase())) {
-                score += 3.0; // Reduced from 5.0
+                score += 2.0; // Reduced from 3.0
                 significantMatches += 1;
             }
 
-            // More lenient inclusion criteria
+            // Very lenient inclusion criteria
             if (score >= TopicConstants.KEYWORD_THRESHOLD || significantMatches > 0) {
                 topicScores.put(topic, score);
             }
         }
 
-        // Return more topics with better coverage
+        // Return more topics with much better coverage
         List<String> matchingTopics = topicScores.entrySet().stream()
                 .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
                 .limit(TopicConstants.MAX_TOPICS_PER_QUESTION)
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toList());
 
-        System.out.println("Enhanced keyword matching found " + matchingTopics.size() + " topics: " + matchingTopics);
+        System.out.println("Enhanced comprehensive keyword matching found " + matchingTopics.size() + " topics: " + matchingTopics);
 
         return matchingTopics.toArray(new String[0]);
     }
 
     /**
-     * Enhanced flexible keyword matching
+     * Very flexible keyword matching with extensive variations
      */
-    private boolean containsKeyword(String text, String keyword) {
-        // More flexible keyword matching
-        return text.contains(" " + keyword + " ") ||
-               text.startsWith(keyword + " ") ||
-               text.endsWith(" " + keyword) ||
-               text.contains(" " + keyword + ",") ||
-               text.contains(" " + keyword + ".") ||
-               text.contains(" " + keyword + ";") ||
-               text.contains("(" + keyword + ")") ||
-               text.contains(keyword + "'s") ||
-               text.contains(keyword + "s ") || // Plural forms
-               text.contains(keyword + "ing") || // Gerund forms
-               text.contains(keyword + "ed") || // Past tense forms
-               text.contains(keyword + "-") || // Hyphenated forms
-               text.contains("-" + keyword); // Reverse hyphenated forms
+    private boolean containsKeywordVeryFlexibly(String text, String keyword) {
+        // All the original flexible matching plus more
+        return text.contains(" " + keyword + " ")
+                || text.startsWith(keyword + " ")
+                || text.endsWith(" " + keyword)
+                || text.contains(" " + keyword + ",")
+                || text.contains(" " + keyword + ".")
+                || text.contains(" " + keyword + ";")
+                || text.contains("(" + keyword + ")")
+                || text.contains(keyword + "'s")
+                || text.contains(keyword + "s ")
+                || // Plural forms
+                text.contains(keyword + "ing")
+                || // Gerund forms
+                text.contains(keyword + "ed")
+                || // Past tense forms
+                text.contains(keyword + "-")
+                || // Hyphenated forms
+                text.contains("-" + keyword)
+                || // Reverse hyphenated forms
+                text.contains(keyword + "ion")
+                || // -tion endings
+                text.contains(keyword + "ment")
+                || // -ment endings
+                text.contains(keyword + "ness")
+                || // -ness endings
+                text.contains(keyword + "ity")
+                || // -ity endings
+                // Partial matching for longer keywords
+                (keyword.length() > 6 && text.contains(keyword.substring(0, keyword.length() - 2)))
+                || // Root word matching
+                (keyword.length() > 5 && text.contains(keyword.substring(0, keyword.length() - 1)));
     }
 }
