@@ -1,11 +1,11 @@
 package com.ppgenarator.ai;
 
 public class TopicConstants {
-    // Constants
+    // Constants - More lenient for better topic coverage
     public static final int BATCH_SIZE = 3;
-    public static final int MAX_TOPICS_PER_QUESTION = 3;
-    public static final double KEYWORD_THRESHOLD = 2.0;
-    public static final double SECONDARY_TOPIC_THRESHOLD = 0.7;
+    public static final int MAX_TOPICS_PER_QUESTION = 4; // Increased from 3
+    public static final double KEYWORD_THRESHOLD = 1.5; // Reduced from 2.0 (more lenient)
+    public static final double SECONDARY_TOPIC_THRESHOLD = 0.5; // Reduced from 0.7 (more lenient)
 
     // A-level Edexcel Economics topics
     public static final String[] DEFAULT_TOPICS = {

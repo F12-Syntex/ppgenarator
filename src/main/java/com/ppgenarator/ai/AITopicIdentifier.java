@@ -19,7 +19,7 @@ public class AITopicIdentifier {
     }
 
     /**
-     * Identify topics for a batch of questions with strict topic limitation
+     * Identify topics for a batch of questions with enhanced topic coverage
      */
     public Map<Integer, String[]> identifyTopicsForBatch(List<Question> questions) {
         if (questions.isEmpty()) {
@@ -44,7 +44,7 @@ public class AITopicIdentifier {
     }
 
     /**
-     * Identify topics for a single question with strict limitation
+     * Identify topics for a single question with enhanced coverage
      */
     public String[] identifyTopicsForSingleQuestion(String cleanedText) {
         try {
@@ -66,31 +66,36 @@ public class AITopicIdentifier {
     private StringBuilder createBatchPrompt(List<Question> questions) {
         StringBuilder batchPrompt = new StringBuilder();
         batchPrompt.append(
-                "You are an expert A-level Economics examiner who specializes in categorizing exam questions based on their CORE economic concepts.\n\n");
+                "You are an expert A-level Economics examiner who specializes in categorizing exam questions based on their economic concepts.\n\n");
         batchPrompt.append("I'll provide you with ").append(questions.size()).append(" economics exam questions.\n");
         batchPrompt.append(
-                "For each question, determine the PRIMARY economic concept being tested, and ONLY add secondary topics if they are absolutely essential.\n\n");
+                "For each question, identify ALL relevant economic topics that could be applied or tested, even if they are secondary concepts.\n\n");
 
-        batchPrompt.append("STRICT INSTRUCTIONS:\n");
+        batchPrompt.append("ENHANCED INSTRUCTIONS:\n");
         batchPrompt.append(
                 "1. IGNORE phrases like 'using the data from the extract' or 'refer to the figure' - these are just exam instructions\n");
-        batchPrompt
-                .append("2. Focus on the MAIN economic concept being tested - what is the question primarily about?\n");
-        batchPrompt.append("3. Only add a second topic if the question equally tests TWO distinct concepts\n");
-        batchPrompt.append("4. MAXIMUM 3 topics per question, but aim for 1-2 topics in most cases\n");
-        batchPrompt.append("5. Be VERY selective - only include topics that are central to answering the question\n");
-        batchPrompt.append("6. Select topics ONLY from this list:\n");
+        batchPrompt.append("2. Include the PRIMARY topic that is being directly tested\n");
+        batchPrompt.append("3. Include SECONDARY topics that are relevant or could be applied to answer the question\n");
+        batchPrompt.append("4. Include topics where knowledge would be helpful even if not directly tested\n");
+        batchPrompt.append("5. MAXIMUM 4 topics per question, aim for 2-3 topics for most questions\n");
+        batchPrompt.append("6. Be more inclusive - if a topic is reasonably related, include it\n");
+        batchPrompt.append("7. Consider cross-connections between topics (e.g., government policies affecting markets)\n");
+        batchPrompt.append("8. Select topics ONLY from this list:\n");
         batchPrompt.append(String.join(", ", topics)).append("\n\n");
 
-        batchPrompt.append("EXAMPLES:\n");
+        batchPrompt.append("ENHANCED EXAMPLES:\n");
         batchPrompt.append(
-                "- Question about macroeconomic policies to reduce negative effects of globalisation → Topics: globalisation, fiscal policy (TWO topics because it's about policies addressing globalisation)\n");
+                "- Question about calculating price elasticity and its impact on revenue → Topics: elasticity, revenue, demand and supply\n");
         batchPrompt.append(
-                "- Question about calculating price elasticity of demand → Topics: elasticity (ONE topic - it's purely about elasticity)\n");
+                "- Question about monopoly profit maximization and welfare effects → Topics: monopoly, profit, market failure, consumer and producer surplus\n");
         batchPrompt.append(
-                "- Question about monopoly profit maximization → Topics: monopoly (ONE topic - profit is part of monopoly theory)\n");
+                "- Question about government intervention to reduce inequality → Topics: government intervention, poverty and inequality, fiscal policy\n");
         batchPrompt.append(
-                "- Question about government intervention to correct market failure → Topics: market failure, government intervention (TWO topics because both are central)\n\n");
+                "- Question about effects of trade liberalization on developing countries → Topics: trade liberalization, developing economies, international economics, globalisation\n");
+        batchPrompt.append(
+                "- Question about environmental policies and sustainability → Topics: sustainability, government intervention, externalities, market failure\n");
+        batchPrompt.append(
+                "- Question about labor market regulations → Topics: labor market, government intervention, wage determination, market failure\n\n");
 
         for (int i = 0; i < questions.size(); i++) {
             Question question = questions.get(i);
@@ -99,39 +104,41 @@ public class AITopicIdentifier {
         }
 
         batchPrompt.append(
-                "For each question, respond with the question number and the most relevant topics (1-3 maximum, prefer fewer).\n");
+                "For each question, respond with the question number and ALL relevant topics (2-4 topics preferred).\n");
         batchPrompt.append(
-                "Format: 'Question 1: topic1' OR 'Question 1: topic1, topic2' (only if both are equally important)\n");
-        batchPrompt.append("CRITICAL: Be strict and selective. Most questions should have only 1-2 topics.");
+                "Format: 'Question 1: topic1, topic2, topic3' (include multiple topics when relevant)\n");
+        batchPrompt.append("CRITICAL: Be inclusive and comprehensive. Most questions should have 2-3 topics for better learning coverage.");
 
         return batchPrompt;
     }
 
     private String createSingleQuestionPrompt(String cleanedText) {
         return String.format(
-                "You are an expert A-level Economics examiner. Analyze this economics exam question to identify the PRIMARY economic concept being tested.\n\n"
+                "You are an expert A-level Economics examiner. Analyze this economics exam question to identify ALL relevant economic concepts.\n\n"
                         +
                         "QUESTION:\n%s\n\n" +
-                        "INSTRUCTIONS:\n" +
-                        "1. IGNORE contextual elements like 'refer to the extract' or 'using the data' - focus on the CORE economic concept\n"
+                        "ENHANCED INSTRUCTIONS:\n" +
+                        "1. IGNORE contextual elements like 'refer to the extract' or 'using the data' - focus on the CORE economic concepts\n"
                         +
-                        "2. What is the MAIN economic knowledge area a student needs to answer this question?\n" +
-                        "3. Only include secondary topics if they are absolutely essential to answering the question\n"
+                        "2. What is the PRIMARY economic knowledge area a student needs to answer this question?\n" +
+                        "3. What SECONDARY topics are relevant or could be applied to answer the question?\n" +
+                        "4. Include topics where knowledge would be helpful even if not directly tested\n" +
+                        "5. Maximum 4 topics, aim for 2-3 topics for comprehensive coverage\n" +
+                        "6. Be inclusive - if a topic is reasonably related, include it\n" +
+                        "7. Consider cross-connections between economic concepts\n" +
+                        "8. Select ONLY from this list:\n%s\n\n" +
+                        "Enhanced Examples:\n" +
+                        "- Question asking to calculate PED and discuss revenue implications → Topics: elasticity, revenue, demand and supply\n" +
+                        "- Question about monopoly pricing and social welfare → Topics: monopoly, market failure, consumer and producer surplus\n" +
+                        "- Question about policies to address globalisation effects → Topics: globalisation, government intervention, fiscal policy, developing economies\n" +
+                        "- Question about environmental regulation → Topics: externalities, government intervention, market failure, sustainability\n\n"
                         +
-                        "4. Maximum 3 topics, but prefer 1-2 topics\n" +
-                        "5. Select ONLY from this list:\n%s\n\n" +
-                        "Examples:\n" +
-                        "- Question asking to calculate PED → Topic: elasticity\n" +
-                        "- Question about policies to address globalisation → Topics: globalisation, fiscal policy\n" +
-                        "- Question about monopoly pricing → Topic: monopoly\n" +
-                        "- Question about market failure and government response → Topics: market failure, government intervention\n\n"
-                        +
-                        "Respond with the most relevant topic(s), separated by commas if multiple. Be strict and selective.",
+                        "Respond with ALL relevant topics, separated by commas. Be comprehensive and inclusive.",
                 cleanedText, String.join(", ", topics));
     }
 
     /**
-     * Parse multiple topic assignments from the AI response
+     * Parse multiple topic assignments from the AI response with enhanced handling
      */
     private Map<Integer, String[]> parseMultipleTopicAssignments(String response, int expectedCount) {
         Map<Integer, String[]> results = new HashMap<>();
@@ -192,7 +199,8 @@ public class AITopicIdentifier {
                 .replaceAll("(?i)Topics?:?\\s*", "")
                 .replaceAll("(?i)The topics? (?:are?|is):?\\s*", "")
                 .replaceAll("(?i)The relevant topics? (?:are?|is):?\\s*", "")
-                .replaceAll("(?i)Primary topics?:?\\s*", "");
+                .replaceAll("(?i)Primary topics?:?\\s*", "")
+                .replaceAll("(?i)All relevant topics?:?\\s*", "");
 
         String[] topics = cleanedResponse.split("\\s*[,;]\\s*|\\s+and\\s+");
 

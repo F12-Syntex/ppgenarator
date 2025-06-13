@@ -25,8 +25,8 @@ public class Generator {
     public void run() {
 
         //download past papers
-        downloadPastPapers();
-        
+        // downloadPastPapers();
+
         // Process past papers if needed
         processAllPastPapers();
 

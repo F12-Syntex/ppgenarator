@@ -60,7 +60,7 @@ public class Categorize {
     }
 
     /**
-     * Process a list of questions to categorize them by topic
+     * Process a list of questions to categorize them by topic with enhanced coverage
      */
     public void processQuestions(List<Question> questions) throws JSONException {
         if (questions == null || questions.isEmpty()) {
@@ -68,9 +68,10 @@ public class Categorize {
             return;
         }
 
-        System.out.println("Processing " + questions.size() + " questions...");
-        System.out.println("Mode: " + (useDynamicTopics ? "Dynamic Topics" : "Fixed Topics"));
+        System.out.println("Processing " + questions.size() + " questions with enhanced topic coverage...");
+        System.out.println("Mode: " + (useDynamicTopics ? "Dynamic Topics" : "Enhanced Fixed Topics"));
         System.out.println("Topics: " + String.join(", ", topics));
+        System.out.println("Maximum topics per question: " + TopicConstants.MAX_TOPICS_PER_QUESTION);
 
         // Group questions by year
         Map<String, List<Question>> questionsByYear = groupQuestionsByYear(questions);
@@ -89,13 +90,13 @@ public class Categorize {
             System.out.println("Processing " + yearQuestions.size() + " questions for year " + year);
             processQuestionBatches(yearQuestions);
 
-            // Quality check for topic distribution
+            // Enhanced quality check for topic distribution
             analyzeTopicDistribution(yearQuestions);
 
             exportQuestionsToJson(yearQuestions, outputFile);
         }
 
-        // Print topic distribution
+        // Print comprehensive topic distribution
         printTopicDistribution();
     }
 
@@ -130,7 +131,7 @@ public class Categorize {
             int endIndex = Math.min(i + TopicConstants.BATCH_SIZE, questions.size());
             List<Question> batch = questions.subList(i, endIndex);
 
-            System.out.println("Processing batch of " + batch.size() + " questions for topic identification");
+            System.out.println("Processing batch of " + batch.size() + " questions for enhanced topic identification");
             identifyTopicsForBatch(batch);
 
             // Add a small delay to avoid rate limiting
@@ -162,7 +163,7 @@ public class Categorize {
     }
 
     /**
-     * Identify topics for a batch of questions
+     * Identify topics for a batch of questions with enhanced coverage
      */
     private void identifyTopicsForBatch(List<Question> questions) {
         // Filter out questions that already have topics
@@ -187,7 +188,7 @@ public class Categorize {
             return;
         }
 
-        // Assign topics to questions with strict validation
+        // Assign topics to questions with enhanced validation
         for (int i = 0; i < questionsNeedingTopics.size(); i++) {
             Question question = questionsNeedingTopics.get(i);
 
@@ -198,7 +199,7 @@ public class Categorize {
                         textProcessor.removeIgnorePhrases(question.getQuestionText()));
 
                 question.setTopics(validatedTopics);
-                System.out.println("Assigned topics " + Arrays.toString(validatedTopics) +
+                System.out.println("Assigned " + validatedTopics.length + " topics " + Arrays.toString(validatedTopics) +
                         " to question " + question.getQuestionNumber());
             } else {
                 // If we couldn't get topics from batch processing, try individual processing
@@ -208,7 +209,7 @@ public class Categorize {
     }
 
     /**
-     * Identify topics for a single question
+     * Identify topics for a single question with enhanced coverage
      */
     private void identifyTopicsForSingleQuestion(Question question) {
         System.out.println("Processing individual question: " + question.getQuestionNumber());
@@ -222,7 +223,7 @@ public class Categorize {
 
         if (validatedTopics.length > 0) {
             question.setTopics(validatedTopics);
-            System.out.println("Assigned topics: " + Arrays.toString(validatedTopics));
+            System.out.println("Assigned " + validatedTopics.length + " topics: " + Arrays.toString(validatedTopics));
             return;
         }
 
@@ -230,7 +231,7 @@ public class Categorize {
         String[] keywordTopics = topicMatcher.findStrictTopicsByKeywords(cleanedText);
         if (keywordTopics.length > 0) {
             question.setTopics(keywordTopics);
-            System.out.println("Assigned topics by keywords: " + Arrays.toString(keywordTopics));
+            System.out.println("Assigned " + keywordTopics.length + " topics by keywords: " + Arrays.toString(keywordTopics));
             return;
         }
 
@@ -293,14 +294,18 @@ public class Categorize {
     }
 
     /**
-     * Analyze the distribution of topics
+     * Enhanced analysis of topic distribution
      */
     private void analyzeTopicDistribution(List<Question> questions) {
         Map<String, Integer> yearDistribution = new HashMap<>();
+        Map<Integer, Integer> topicCountDistribution = new HashMap<>();
         int questionsWithMultipleTopics = 0;
 
         for (Question question : questions) {
             if (question.getTopics() != null && question.getTopics().length > 0) {
+                int topicCount = question.getTopics().length;
+                topicCountDistribution.put(topicCount, topicCountDistribution.getOrDefault(topicCount, 0) + 1);
+                
                 if (question.getTopics().length > 1) {
                     questionsWithMultipleTopics++;
                 }
@@ -316,24 +321,44 @@ public class Categorize {
         int totalQuestions = questions.size();
         double multipleTopicPercentage = (double) questionsWithMultipleTopics / totalQuestions * 100;
 
+        System.out.println("\n=== ENHANCED TOPIC DISTRIBUTION ANALYSIS ===");
         System.out.println("Questions with multiple topics: " + questionsWithMultipleTopics +
                 " (" + String.format("%.1f%%", multipleTopicPercentage) + ")");
+        
+        System.out.println("\nTopic count distribution:");
+        for (Map.Entry<Integer, Integer> entry : topicCountDistribution.entrySet()) {
+            double percentage = (double) entry.getValue() / totalQuestions * 100;
+            System.out.println("  " + entry.getKey() + " topics: " + entry.getValue() + 
+                    " questions (" + String.format("%.1f%%", percentage) + ")");
+        }
 
-        // Check for any topics that appear too frequently
+        // Only warn if a topic appears in more than 80% of questions (very high threshold)
         for (Map.Entry<String, Integer> entry : yearDistribution.entrySet()) {
             double percentage = (double) entry.getValue() / totalQuestions * 100;
-            if (percentage > 70) { // Very high threshold since we're being strict
-                System.out.println("WARNING: Topic '" + entry.getKey() + "' appears in " +
-                        String.format("%.1f%%", percentage) + " of questions for this year.");
+            if (percentage > 80) {
+                System.out.println("NOTE: Topic '" + entry.getKey() + "' appears in " +
+                        String.format("%.1f%%", percentage) + " of questions - consider if this is appropriate.");
             }
         }
+
+        // Show topics with good coverage
+        System.out.println("\nTopics with good coverage (>5 questions):");
+        yearDistribution.entrySet().stream()
+                .filter(entry -> entry.getValue() > 5)
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .forEach(entry -> {
+                    double percentage = (double) entry.getValue() / totalQuestions * 100;
+                    System.out.println("  " + entry.getKey() + ": " + entry.getValue() + 
+                            " questions (" + String.format("%.1f%%", percentage) + ")");
+                });
     }
 
     /**
-     * Print overall topic distribution
+     * Print comprehensive topic distribution
      */
     private void printTopicDistribution() {
-        System.out.println("\n--- TOPIC DISTRIBUTION (Strict categorization, max 3 topics) ---");
+        System.out.println("\n=== COMPREHENSIVE TOPIC DISTRIBUTION ===");
+        System.out.println("(Enhanced categorization with up to " + TopicConstants.MAX_TOPICS_PER_QUESTION + " topics per question)");
 
         // Sort topics by frequency
         List<Map.Entry<String, Integer>> sortedEntries = new ArrayList<>(topicDistribution.entrySet());
@@ -341,13 +366,24 @@ public class Categorize {
 
         int totalTopicAssignments = sortedEntries.stream().mapToInt(Map.Entry::getValue).sum();
 
+        System.out.println("\nAll topics (sorted by frequency):");
         for (Map.Entry<String, Integer> entry : sortedEntries) {
             double percentage = (double) entry.getValue() / totalTopicAssignments * 100;
-            System.out.printf("%-30s: %3d (%.1f%% of topic assignments)\n",
+            System.out.printf("%-35s: %3d assignments (%.1f%% of total assignments)\n",
                     entry.getKey(), entry.getValue(), percentage);
         }
 
-        System.out.println("Total topic assignments: " + totalTopicAssignments);
-        System.out.println("-------------------------");
+        // Show topics that might need attention
+        System.out.println("\nTopics with few assignments (might need review):");
+        sortedEntries.stream()
+                .filter(entry -> entry.getValue() < 3)
+                .forEach(entry -> 
+                    System.out.println("  " + entry.getKey() + ": " + entry.getValue() + " assignments"));
+
+        System.out.println("\nTotal topic assignments: " + totalTopicAssignments);
+        System.out.println("Average topics per question: " + 
+                String.format("%.2f", (double) totalTopicAssignments / 
+                (totalTopicAssignments > 0 ? sortedEntries.size() : 1)));
+        System.out.println("==============================================");
     }
 }
