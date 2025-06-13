@@ -17,14 +17,17 @@ public class MockTestGenerator {
     private int targetMarksPerMock;
     private int minimumQ1To5MockTests;
     private boolean createQ1To5OnlyMocks;
+    private int mockTime;
 
     private CoverPageCreator coverPageCreator;
     private MockTestPdfCreator mockTestPdfCreator;
 
-    public MockTestGenerator(int targetMarksPerMock, int minimumQ1To5MockTests, boolean createQ1To5OnlyMocks) {
+    public MockTestGenerator(int targetMarksPerMock, int minimumQ1To5MockTests, boolean createQ1To5OnlyMocks,
+            int mockTime) {
         this.targetMarksPerMock = targetMarksPerMock;
         this.minimumQ1To5MockTests = minimumQ1To5MockTests;
         this.createQ1To5OnlyMocks = createQ1To5OnlyMocks;
+        this.mockTime = mockTime;
         this.coverPageCreator = new CoverPageCreator();
         this.mockTestPdfCreator = new MockTestPdfCreator();
     }
@@ -46,8 +49,8 @@ public class MockTestGenerator {
                 }
             }
 
-            System.out.println("Found " + q1To5Questions.size() + " Q1-5 questions and " +
-                    q6Questions.size() + " Q6 questions");
+            System.out.println("Found " + q1To5Questions.size() + " Q1-5 questions and "
+                    + q6Questions.size() + " Q6 questions");
 
             // Create short questions mocks if enabled
             if (createQ1To5OnlyMocks && !q1To5Questions.isEmpty()) {
@@ -101,14 +104,15 @@ public class MockTestGenerator {
         while (shortMocksCreated < minimumQ1To5MockTests && !q1To5Questions.isEmpty()) {
             List<Question> selectedQuestions = selectQuestionsForMock(q1To5Questions, targetMarksPerMock);
 
-            if (selectedQuestions.isEmpty())
+            if (selectedQuestions.isEmpty()) {
                 break;
+            }
 
             // Check if we met the target marks
             int actualMarks = selectedQuestions.stream().mapToInt(Question::getMarks).sum();
             if (actualMarks < targetMarksPerMock) {
-                System.out.println("Warning: Short questions mock " + (shortMocksCreated + 1) +
-                        " only has " + actualMarks + " marks (target: " + targetMarksPerMock + ")");
+                System.out.println("Warning: Short questions mock " + (shortMocksCreated + 1)
+                        + " only has " + actualMarks + " marks (target: " + targetMarksPerMock + ")");
             }
 
             String mockName = shortMocksCreated == 0 ? "short questions mock"
@@ -141,8 +145,8 @@ public class MockTestGenerator {
             // Check if we met the target marks
             int actualMarks = selectedQuestions.stream().mapToInt(Question::getMarks).sum();
             if (actualMarks < targetMarksPerMock) {
-                System.out.println("Warning: Mixed mock " + mockTestNumber +
-                        " only has " + actualMarks + " marks (target: " + targetMarksPerMock + ")");
+                System.out.println("Warning: Mixed mock " + mockTestNumber
+                        + " only has " + actualMarks + " marks (target: " + targetMarksPerMock + ")");
             }
 
             String mockName = "mock" + mockTestNumber;
@@ -182,8 +186,8 @@ public class MockTestGenerator {
                 totalMarks += question.getMarks();
                 availableQuestions.remove(i);
 
-                System.out.println("Added question with " + question.getMarks() +
-                        " marks, total now: " + totalMarks);
+                System.out.println("Added question with " + question.getMarks()
+                        + " marks, total now: " + totalMarks);
             }
         }
 
@@ -202,12 +206,12 @@ public class MockTestGenerator {
         if (!q6Questions.isEmpty()) {
             Question q6Question = q6Questions.remove(q6Questions.size() - 1);
             selected.add(q6Question);
-            totalMarks += q6Question.getMarks();
+            totalMarks += q6Question.getMarks() * 2;
             hasQ6Question = true;
             usedQ6Paper = QuestionUtils.getPaperIdentifier(q6Question);
 
-            System.out.println("Added Q6 question from paper: " + usedQ6Paper +
-                    ", marks so far: " + totalMarks + "/" + targetMarks);
+            System.out.println("Added Q6 question from paper: " + usedQ6Paper
+                    + ", marks so far: " + totalMarks + "/" + targetMarks);
         }
 
         // Fill with Q1-5 questions
@@ -219,8 +223,8 @@ public class MockTestGenerator {
                 totalMarks += question.getMarks();
                 q1To5Questions.remove(i);
 
-                System.out.println("Added Q1-5 question: " + question.getQuestionNumber() +
-                        " (" + question.getMarks() + " marks), total: " + totalMarks + "/" + targetMarks);
+                System.out.println("Added Q1-5 question: " + question.getQuestionNumber()
+                        + " (" + question.getMarks() + " marks), total: " + totalMarks + "/" + targetMarks);
 
                 if (totalMarks >= targetMarks) {
                     break;
@@ -235,8 +239,8 @@ public class MockTestGenerator {
             totalMarks += q6Question.getMarks();
             usedQ6Paper = QuestionUtils.getPaperIdentifier(q6Question);
 
-            System.out.println("Added Q6 question (second attempt) from paper: " + usedQ6Paper +
-                    ", final marks: " + totalMarks);
+            System.out.println("Added Q6 question (second attempt) from paper: " + usedQ6Paper
+                    + ", final marks: " + totalMarks);
         }
 
         // Final attempt: if still under target, add more Q6 questions BUT ONLY from the
@@ -253,8 +257,8 @@ public class MockTestGenerator {
                     totalMarks += question.getMarks();
                     q6Questions.remove(i);
 
-                    System.out.println("Final attempt: added Q6 question from same paper with " +
-                            question.getMarks() + " marks, total: " + totalMarks);
+                    System.out.println("Final attempt: added Q6 question from same paper with "
+                            + question.getMarks() + " marks, total: " + totalMarks);
                 }
             }
         }
@@ -267,8 +271,8 @@ public class MockTestGenerator {
                 totalMarks += question.getMarks();
                 q1To5Questions.remove(i);
 
-                System.out.println("Final attempt: added Q1-5 question with " + question.getMarks() +
-                        " marks, total: " + totalMarks);
+                System.out.println("Final attempt: added Q1-5 question with " + question.getMarks()
+                        + " marks, total: " + totalMarks);
             }
         }
 
@@ -288,18 +292,22 @@ public class MockTestGenerator {
             estimatedMinutes += question.getMarks();
         }
 
+        // Force the displayed time to 25 minutes, regardless of marks (as per
+        // requirement)
+        estimatedMinutes = this.mockTime;
+
         File mockTestDir = new File(mockTestsDir, mockName);
         mockTestDir.mkdirs();
 
         // Count Q6 questions for verification
         long q6Count = questions.stream().filter(q -> QuestionUtils.isQuestion6(q.getQuestionNumber())).count();
-        System.out.println("Creating " + mockName + " with " + questions.size() + " questions (" +
-                q6Count + " Q6 questions, " + totalMarks + " marks)");
+        System.out.println("Creating " + mockName + " with " + questions.size() + " questions ("
+                + q6Count + " Q6 questions, " + totalMarks + " marks)");
 
         // Warning if under target
         if (totalMarks < targetMarksPerMock) {
-            System.out.println("WARNING: " + mockName + " has only " + totalMarks +
-                    " marks (target: " + targetMarksPerMock + ")");
+            System.out.println("WARNING: " + mockName + " has only " + totalMarks
+                    + " marks (target: " + targetMarksPerMock + ")");
         }
 
         File coverPageFile = isQ1To5Only

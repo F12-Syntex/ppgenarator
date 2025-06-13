@@ -16,6 +16,7 @@ public class TopicCompiler {
     private File metadataDir;
     private File outputDir;
     private int targetMarksPerMock = 20;
+    private int mockTime = 25;
     private int minimumQ1To5MockTests = 1;
     private boolean createQ1To5OnlyMocks = true;
 
@@ -33,7 +34,7 @@ public class TopicCompiler {
 
         // Initialize services
         this.questionLoader = new QuestionLoader();
-        this.mockTestGenerator = new MockTestGenerator(targetMarksPerMock, minimumQ1To5MockTests, createQ1To5OnlyMocks);
+        this.mockTestGenerator = new MockTestGenerator(targetMarksPerMock, minimumQ1To5MockTests, createQ1To5OnlyMocks, mockTime);
         this.pdfMerger = new PdfMerger();
     }
 

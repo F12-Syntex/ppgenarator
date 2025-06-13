@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
@@ -21,333 +22,342 @@ import com.ppgenerator.types.Question;
 
 public class MarkschemeCreator {
 
-    public File createMockTestMarkscheme(List<Question> questions, File mockTestDir) throws IOException {
-        // Filter questions that have markschemes
-        List<Question> questionsWithMarkschemes = new ArrayList<>();
-        for (Question question : questions) {
-            if (question.getMarkScheme() != null && question.getMarkScheme().exists()) {
-                questionsWithMarkschemes.add(question);
-            }
-        }
+    private static final float MARGIN = 50f;
+    private static final int MIN_PAGE_CONTENT_LENGTH = 10;
+    private static final String MARKSCHEME_FILENAME = "mock_markscheme.pdf";
 
-        if (questionsWithMarkschemes.isEmpty()) {
-            System.out.println("No markschemes found for this mock test");
+    /**
+     * Creates a comprehensive markscheme PDF for a mock test
+     */
+    public File createMockTestMarkscheme(List<Question> questions, File mockTestDir) throws IOException {
+        List<Question> validQuestions = filterQuestionsWithMarkschemes(questions);
+
+        if (validQuestions.isEmpty()) {
+            System.out.println("📝 No markschemes found for this mock test");
             return null;
         }
 
-        // Create the final markscheme PDF
-        PDFMergerUtility markschemesMerger = new PDFMergerUtility();
-        File markschemeOutputFile = new File(mockTestDir, "mock_markscheme.pdf");
-        markschemesMerger.setDestinationFileName(markschemeOutputFile.getAbsolutePath());
+        File markschemeFile = new File(mockTestDir, MARKSCHEME_FILENAME);
+        List<File> tempFiles = new ArrayList<>();
 
-        // Create index page
-        File indexPageFile = createMockMarkschemeIndexPage(questionsWithMarkschemes, mockTestDir);
-        markschemesMerger.addSource(indexPageFile);
+        try {
+            PDFMergerUtility merger = createMerger(markschemeFile);
 
-        List<File> tempMarkSchemeFiles = new ArrayList<>();
-        Set<String> processedMarkschemes = new HashSet<>();
+            // Add index page
+            File indexPage = createIndexPage(validQuestions, mockTestDir);
+            merger.addSource(indexPage);
+            tempFiles.add(indexPage);
 
-        // Process each markscheme
-        for (Question question : questionsWithMarkschemes) {
-            if (question.getMarkScheme() != null && question.getMarkScheme().exists()) {
-                String markschemeHash = FileUtils.getFileMd5Hash(question.getMarkScheme());
+            // Add processed markschemes
+            addMarkschemes(merger, validQuestions, tempFiles);
 
-                // Skip duplicates
-                if (processedMarkschemes.contains(markschemeHash)) {
-                    System.out.println("Skipping duplicate markscheme in mock test: " +
-                            question.getYear() + "_" + question.getQuestionNumber());
-                    continue;
-                }
+            merger.mergeDocuments(null);
+            System.out.println("✅ Created markscheme: " + markschemeFile.getAbsolutePath());
 
-                processedMarkschemes.add(markschemeHash);
+            return markschemeFile;
 
-                // Load and process the markscheme PDF
-                File processedMarkscheme = processMarkscheme(question.getMarkScheme(), question);
-                if (processedMarkscheme != null) {
-                    markschemesMerger.addSource(processedMarkscheme);
-                    tempMarkSchemeFiles.add(processedMarkscheme);
-                }
-            }
+        } finally {
+            cleanupTempFiles(tempFiles);
         }
-
-        // Merge all markschemes
-        markschemesMerger.mergeDocuments(null);
-        System.out.println("Created mock test markschemes PDF: " + markschemeOutputFile.getAbsolutePath());
-
-        // Clean up temporary files
-        indexPageFile.delete();
-        for (File tempFile : tempMarkSchemeFiles) {
-            tempFile.delete();
-        }
-
-        return markschemeOutputFile;
     }
 
-    private File createMockMarkschemeIndexPage(List<Question> questions, File mockTestDir) throws IOException {
-        File indexPageFile = new File(mockTestDir, "mock_index_page.pdf");
+    private List<Question> filterQuestionsWithMarkschemes(List<Question> questions) {
+        return questions.stream()
+                .filter(q -> q.getMarkScheme() != null && q.getMarkScheme().exists())
+                .toList();
+    }
+
+    private PDFMergerUtility createMerger(File outputFile) {
+        PDFMergerUtility merger = new PDFMergerUtility();
+        merger.setDestinationFileName(outputFile.getAbsolutePath());
+        return merger;
+    }
+
+    private File createIndexPage(List<Question> questions, File mockTestDir) throws IOException {
+        File indexFile = new File(mockTestDir, "temp_index.pdf");
 
         try (PDDocument document = new PDDocument()) {
             PDPage page = new PDPage(PDRectangle.A4);
             document.addPage(page);
 
-            try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
-                createIndexPageContent(contentStream, page, questions);
+            try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+                renderIndexPage(content, page, questions);
             }
 
-            document.save(indexPageFile);
+            document.save(indexFile);
         }
 
-        return indexPageFile;
+        return indexFile;
     }
 
-    private void createIndexPageContent(PDPageContentStream contentStream, PDPage page, List<Question> questions)
+    private void renderIndexPage(PDPageContentStream content, PDPage page, List<Question> questions)
             throws IOException {
-        float margin = 50;
         float pageWidth = page.getMediaBox().getWidth();
         float pageHeight = page.getMediaBox().getHeight();
-        float yPosition = pageHeight - margin;
+        float y = pageHeight - MARGIN;
 
-        // Header
-        contentStream.beginText();
-        contentStream.setFont(PDType1Font.HELVETICA_BOLD, 24);
-        String title = "MOCK TEST MARKSCHEME INDEX";
-        float titleWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(title) / 1000 * 24;
-        contentStream.newLineAtOffset((pageWidth - titleWidth) / 2, yPosition);
-        contentStream.showText(title);
-        contentStream.endText();
+        // Modern header
+        y = drawHeader(content, pageWidth, y);
+        y = drawSeparator(content, pageWidth, y - 30);
 
-        yPosition -= 50;
-
-        // Draw a line under the title
-        contentStream.setLineWidth(2);
-        contentStream.moveTo(margin, yPosition);
-        contentStream.lineTo(pageWidth - margin, yPosition);
-        contentStream.stroke();
-
-        yPosition -= 30;
-
-        // Create table headers
-        yPosition = createTableHeaders(contentStream, margin, pageWidth, yPosition);
-        yPosition -= 20;
-
-        // Create table content
-        createTableContent(contentStream, questions, margin, pageWidth, yPosition);
+        // Table
+        y = drawTableHeader(content, y - 40);
+        drawTableRows(content, questions, y - 30);
 
         // Footer
-        createIndexFooter(contentStream, pageWidth, margin);
+        drawFooter(content, pageWidth);
     }
 
-    private float createTableHeaders(PDPageContentStream contentStream, float margin, float pageWidth, float yPosition)
-            throws IOException {
-        String[] headers = { "Question", "Year", "Marks", "Page" };
-        float[] positions = { margin, margin + 150, margin + 220, margin + 300 };
+    private float drawHeader(PDPageContentStream content, float pageWidth, float y) throws IOException {
+        content.beginText();
+        content.setFont(PDType1Font.HELVETICA_BOLD, 28);
+        String title = "MARKSCHEME INDEX";
+        float titleWidth = getTextWidth(title, PDType1Font.HELVETICA_BOLD, 28);
+        content.newLineAtOffset((pageWidth - titleWidth) / 2, y);
+        content.showText(title);
+        content.endText();
+        return y;
+    }
+
+    private float drawSeparator(PDPageContentStream content, float pageWidth, float y) throws IOException {
+        content.setLineWidth(3);
+        content.moveTo(MARGIN, y);
+        content.lineTo(pageWidth - MARGIN, y);
+        content.stroke();
+        return y;
+    }
+
+    private float drawTableHeader(PDPageContentStream content, float y) throws IOException {
+        String[] headers = {"Question", "Year", "Marks", "Page"};
+        float[] positions = {MARGIN, MARGIN + 150, MARGIN + 250, MARGIN + 350};
 
         for (int i = 0; i < headers.length; i++) {
-            contentStream.beginText();
-            contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
-            contentStream.newLineAtOffset(positions[i], yPosition);
-            contentStream.showText(headers[i]);
-            contentStream.endText();
+            content.beginText();
+            content.setFont(PDType1Font.HELVETICA_BOLD, 14);
+            content.newLineAtOffset(positions[i], y);
+            content.showText(headers[i]);
+            content.endText();
         }
 
-        // Draw line under headers
-        contentStream.setLineWidth(1);
-        contentStream.moveTo(margin, yPosition - 5);
-        contentStream.lineTo(pageWidth - margin, yPosition - 5);
-        contentStream.stroke();
+        // Underline headers
+        content.setLineWidth(1.5f);
+        content.moveTo(MARGIN, y - 8);
+        content.lineTo(MARGIN + 400, y - 8);
+        content.stroke();
 
-        return yPosition;
+        return y;
     }
 
-    private void createTableContent(PDPageContentStream contentStream, List<Question> questions,
-            float margin, float pageWidth, float yPosition) throws IOException {
-        int currentPage = 2; // Start after index page
-        Set<String> processedMarkschemes = new HashSet<>();
+    private void drawTableRows(PDPageContentStream content, List<Question> questions, float startY)
+            throws IOException {
+        float y = startY;
+        int currentPage = 2; // After index
+        Set<String> processed = new HashSet<>();
 
         for (Question question : questions) {
-            if (question.getMarkScheme() != null && question.getMarkScheme().exists()) {
-                String markschemeHash = FileUtils.getFileMd5Hash(question.getMarkScheme());
-
-                // Skip duplicates in the index
-                if (processedMarkschemes.contains(markschemeHash)) {
-                    continue;
-                }
-                processedMarkschemes.add(markschemeHash);
-
-                // Create table row
-                createTableRow(contentStream, question, margin, yPosition, currentPage);
-                yPosition -= 18;
-
-                // Calculate pages for this markscheme
-                try (PDDocument markschemeDoc = PDDocument.load(question.getMarkScheme())) {
-                    int validPages = countValidPages(markschemeDoc);
-                    currentPage += validPages;
-                }
-
-                // Check if we need a new page
-                if (yPosition < margin + 50) {
-                    break; // Simple implementation - just break if running out of space
-                }
+            String hash = FileUtils.getFileMd5Hash(question.getMarkScheme());
+            if (processed.contains(hash)) {
+                continue;
             }
-        }
+
+            processed.add(hash);
+            drawTableRow(content, question, y, currentPage);
+
+            currentPage += countValidPages(question.getMarkScheme()) + 1; // +1 for header page
+            y -= 20;
+
+            if (y < MARGIN + 100) {
+                break; // Prevent overflow
+
+                    }}
     }
 
-    private void createTableRow(PDPageContentStream contentStream, Question question,
-            float margin, float yPosition, int currentPage) throws IOException {
-        float[] positions = { margin, margin + 150, margin + 220, margin + 300 };
+    private void drawTableRow(PDPageContentStream content, Question question, float y, int pageNum)
+            throws IOException {
+        float[] positions = {MARGIN, MARGIN + 150, MARGIN + 250, MARGIN + 350};
         String[] values = {
-                FormattingUtils.formatQuestionNumber(question.getQuestionNumber()),
-                question.getYear(),
-                String.valueOf(question.getMarks()),
-                String.valueOf(currentPage)
+            FormattingUtils.formatQuestionNumber(question.getQuestionNumber()),
+            question.getYear(),
+            String.valueOf(question.getMarks()),
+            String.valueOf(pageNum)
         };
 
         for (int i = 0; i < values.length; i++) {
-            contentStream.beginText();
-            contentStream.setFont(PDType1Font.HELVETICA, 11);
-            contentStream.newLineAtOffset(positions[i], yPosition);
-            contentStream.showText(values[i]);
-            contentStream.endText();
+            content.beginText();
+            content.setFont(PDType1Font.HELVETICA, 12);
+            content.newLineAtOffset(positions[i], y);
+            content.showText(values[i]);
+            content.endText();
         }
     }
 
-    private void createIndexFooter(PDPageContentStream contentStream, float pageWidth, float margin)
-            throws IOException {
-        float yPosition = margin + 30;
-        contentStream.beginText();
-        contentStream.setFont(PDType1Font.HELVETICA_OBLIQUE, 10);
-        String footer = "Use this index to quickly navigate to specific question markschemes.";
-        float footerWidth = PDType1Font.HELVETICA_OBLIQUE.getStringWidth(footer) / 1000 * 10;
-        contentStream.newLineAtOffset((pageWidth - footerWidth) / 2, yPosition);
-        contentStream.showText(footer);
-        contentStream.endText();
+    private void drawFooter(PDPageContentStream content, float pageWidth) throws IOException {
+        content.beginText();
+        content.setFont(PDType1Font.HELVETICA_OBLIQUE, 11);
+        String footer = "Navigate efficiently with this comprehensive index";
+        float footerWidth = getTextWidth(footer, PDType1Font.HELVETICA_OBLIQUE, 11);
+        content.newLineAtOffset((pageWidth - footerWidth) / 2, MARGIN);
+        content.showText(footer);
+        content.endText();
     }
 
-    private File processMarkscheme(File markschemeFile, Question question) throws IOException {
-        try (PDDocument document = PDDocument.load(markschemeFile)) {
-            PDDocument processedDoc = new PDDocument();
+    private void addMarkschemes(PDFMergerUtility merger, List<Question> questions, List<File> tempFiles)
+            throws IOException {
+        Set<String> processed = new HashSet<>();
 
-            // Add a header page for this question's markscheme
-            addMarkschemeHeaderPage(processedDoc, question);
+        for (Question question : questions) {
+            String hash = FileUtils.getFileMd5Hash(question.getMarkScheme());
+            if (processed.contains(hash)) {
+                System.out.println("⏭️  Skipping duplicate: " + question.getQuestionNumber());
+                continue;
+            }
 
-            // Process original markscheme pages (remove empty and duplicate pages)
-            processOriginalMarkschemePages(document, processedDoc, question);
+            processed.add(hash);
 
-            // Save the processed document
-            File tempFile = File.createTempFile("processed_ms_", ".pdf");
-            processedDoc.save(tempFile);
-            processedDoc.close();
+            File processedFile = processMarkscheme(question);
+            if (processedFile != null) {
+                merger.addSource(processedFile);
+                tempFiles.add(processedFile);
+            }
+        }
+    }
+
+    private File processMarkscheme(Question question) throws IOException {
+        try (PDDocument original = PDDocument.load(question.getMarkScheme()); PDDocument processed = new PDDocument()) {
+
+            // Add header page
+            addHeaderPage(processed, question);
+
+            // Add valid pages only
+            addValidPages(original, processed);
+
+            File tempFile = File.createTempFile("markscheme_", ".pdf");
+            processed.save(tempFile);
 
             return tempFile;
 
         } catch (Exception e) {
-            System.err
-                    .println("Error processing markscheme for " + question.getQuestionNumber() + ": " + e.getMessage());
+            System.err.println("❌ Error processing markscheme for " + question.getQuestionNumber()
+                    + ": " + e.getMessage());
             return null;
         }
     }
 
-    private void addMarkschemeHeaderPage(PDDocument processedDoc, Question question) throws IOException {
-        PDPage headerPage = new PDPage(PDRectangle.A4);
-        processedDoc.addPage(headerPage);
+    private void addHeaderPage(PDDocument document, Question question) throws IOException {
+        PDPage page = new PDPage(PDRectangle.A4);
+        document.addPage(page);
 
-        try (PDPageContentStream contentStream = new PDPageContentStream(processedDoc, headerPage)) {
-            float margin = 50;
-            float pageWidth = headerPage.getMediaBox().getWidth();
-            float pageHeight = headerPage.getMediaBox().getHeight();
-
-            // Draw border
-            contentStream.setLineWidth(2);
-            contentStream.addRect(margin, margin, pageWidth - 2 * margin, pageHeight - 2 * margin);
-            contentStream.stroke();
-
-            // Header
-            contentStream.beginText();
-            contentStream.setFont(PDType1Font.HELVETICA_BOLD, 20);
-            String header = "MARKSCHEME";
-            float headerWidth = PDType1Font.HELVETICA_BOLD.getStringWidth(header) / 1000 * 20;
-            contentStream.newLineAtOffset((pageWidth - headerWidth) / 2, pageHeight - margin - 50);
-            contentStream.showText(header);
-            contentStream.endText();
-
-            // Question details
-            float yPos = pageHeight - margin - 120;
-            String[] details = {
-                    "Question: " + FormattingUtils.formatQuestionNumber(question.getQuestionNumber()),
-                    "Year: " + question.getYear(),
-                    "Exam Board: " + question.getBoard().toString(),
-                    "Marks: " + question.getMarks()
-            };
-
-            for (String detail : details) {
-                contentStream.beginText();
-                contentStream.setFont(PDType1Font.HELVETICA, 14);
-                contentStream.newLineAtOffset(margin + 30, yPos);
-                contentStream.showText(detail);
-                contentStream.endText();
-                yPos -= 25;
-            }
+        try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+            renderHeaderPage(content, page, question);
         }
     }
 
-    private void processOriginalMarkschemePages(PDDocument document, PDDocument processedDoc, Question question)
+    private void renderHeaderPage(PDPageContentStream content, PDPage page, Question question)
             throws IOException {
-        PDFTextStripper textStripper = new PDFTextStripper();
-        Set<String> seenPageContent = new HashSet<>();
+        float pageWidth = page.getMediaBox().getWidth();
+        float pageHeight = page.getMediaBox().getHeight();
 
-        for (int i = 0; i < document.getNumberOfPages(); i++) {
-            textStripper.setStartPage(i + 1);
-            textStripper.setEndPage(i + 1);
-            String pageText = textStripper.getText(document).trim();
+        // Modern border
+        content.setLineWidth(3);
+        content.addRect(MARGIN, MARGIN, pageWidth - 2 * MARGIN, pageHeight - 2 * MARGIN);
+        content.stroke();
 
-            // Skip empty pages or pages with minimal content
-            if (pageText.length() < 10) {
-                System.out.println("Skipping empty page " + (i + 1) + " in markscheme for " +
-                        question.getYear() + "_" + question.getQuestionNumber());
-                continue;
-            }
+        // Title
+        content.beginText();
+        content.setFont(PDType1Font.HELVETICA_BOLD, 24);
+        String title = "MARKSCHEME";
+        float titleWidth = getTextWidth(title, PDType1Font.HELVETICA_BOLD, 24);
+        content.newLineAtOffset((pageWidth - titleWidth) / 2, pageHeight - MARGIN - 80);
+        content.showText(title);
+        content.endText();
 
-            // Skip duplicate pages
-            String pageHash = Integer.toString(pageText.hashCode());
-            if (seenPageContent.contains(pageHash)) {
-                System.out.println("Skipping duplicate page " + (i + 1) + " in markscheme for " +
-                        question.getYear() + "_" + question.getQuestionNumber());
-                continue;
-            }
+        // Question details in a clean layout
+        float y = pageHeight - MARGIN - 150;
+        Map<String, String> details = Map.of(
+                "Question", FormattingUtils.formatQuestionNumber(question.getQuestionNumber()),
+                "Year", question.getYear(),
+                "Board", question.getBoard().toString(),
+                "Marks", String.valueOf(question.getMarks()));
 
-            seenPageContent.add(pageHash);
-
-            // Add this valid page
-            PDPage originalPage = document.getPage(i);
-            processedDoc.importPage(originalPage);
+        for (Map.Entry<String, String> entry : details.entrySet()) {
+            drawDetailLine(content, entry.getKey(), entry.getValue(), y);
+            y -= 30;
         }
     }
 
-    private int countValidPages(PDDocument document) throws IOException {
-        PDFTextStripper textStripper = new PDFTextStripper();
-        Set<String> seenPageContent = new HashSet<>();
-        int validPages = 0;
+    private void drawDetailLine(PDPageContentStream content, String label, String value, float y)
+            throws IOException {
+        // Label
+        content.beginText();
+        content.setFont(PDType1Font.HELVETICA_BOLD, 14);
+        content.newLineAtOffset(MARGIN + 50, y);
+        content.showText(label + ":");
+        content.endText();
 
-        for (int i = 0; i < document.getNumberOfPages(); i++) {
-            textStripper.setStartPage(i + 1);
-            textStripper.setEndPage(i + 1);
-            String pageText = textStripper.getText(document).trim();
+        // Value
+        content.beginText();
+        content.setFont(PDType1Font.HELVETICA, 14);
+        content.newLineAtOffset(MARGIN + 150, y);
+        content.showText(value);
+        content.endText();
+    }
 
-            // Skip empty pages
-            if (pageText.length() < 10) {
-                continue;
+    private void addValidPages(PDDocument original, PDDocument processed) throws IOException {
+        PDFTextStripper stripper = new PDFTextStripper();
+        Set<Integer> seenHashes = new HashSet<>();
+
+        for (int i = 0; i < original.getNumberOfPages(); i++) {
+            String text = extractPageText(stripper, original, i);
+
+            if (isValidPage(text) && !isDuplicate(text, seenHashes)) {
+                processed.importPage(original.getPage(i));
             }
-
-            // Skip duplicate pages
-            String pageHash = Integer.toString(pageText.hashCode());
-            if (seenPageContent.contains(pageHash)) {
-                continue;
-            }
-
-            seenPageContent.add(pageHash);
-            validPages++;
         }
+    }
 
-        return validPages + 1;
+    private String extractPageText(PDFTextStripper stripper, PDDocument document, int pageIndex)
+            throws IOException {
+        stripper.setStartPage(pageIndex + 1);
+        stripper.setEndPage(pageIndex + 1);
+        return stripper.getText(document).trim();
+    }
+
+    private boolean isValidPage(String text) {
+        return text.length() >= MIN_PAGE_CONTENT_LENGTH;
+    }
+
+    private boolean isDuplicate(String text, Set<Integer> seenHashes) {
+        int hash = text.hashCode();
+        return !seenHashes.add(hash);
+    }
+
+    private int countValidPages(File markschemeFile) throws IOException {
+        try (PDDocument document = PDDocument.load(markschemeFile)) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            Set<Integer> seenHashes = new HashSet<>();
+            int count = 0;
+
+            for (int i = 0; i < document.getNumberOfPages(); i++) {
+                String text = extractPageText(stripper, document, i);
+                if (isValidPage(text) && !isDuplicate(text, seenHashes)) {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+    }
+
+    private float getTextWidth(String text, org.apache.pdfbox.pdmodel.font.PDFont font, float fontSize)
+            throws IOException {
+        return font.getStringWidth(text) / 1000 * fontSize;
+    }
+
+    private void cleanupTempFiles(List<File> tempFiles) {
+        tempFiles.forEach(file -> {
+            if (file.exists() && !file.delete()) {
+                file.deleteOnExit();
+            }
+        });
     }
 }

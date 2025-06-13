@@ -6,6 +6,7 @@ import lombok.Data;
 
 @Data
 public class Question {
+
     private String questionNumber;
     private String questionText;
 
@@ -36,7 +37,7 @@ public class Question {
                 return 4;
         }
 
-        int[] marks = { 2, 4, 5, 6, 8, 10, 12, 15, 20, 25 };
+        int[] marks = {2, 4, 5, 6, 8, 10, 12, 15, 20, 25};
 
         for (int mark : marks) {
             if (questionText.contains("(" + String.valueOf(mark) + ")")) {
