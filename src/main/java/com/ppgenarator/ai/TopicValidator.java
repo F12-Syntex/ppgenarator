@@ -2,13 +2,23 @@ package com.ppgenarator.ai;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class TopicValidator {
     private final String[] validTopics;
     private final TopicKeywordManager keywordManager;
+    
+    // Track over-used topics for better balance
+    private static final Set<String> COMMONLY_OVERUSED_TOPICS = new HashSet<>();
+    static {
+        COMMONLY_OVERUSED_TOPICS.add("1.1.3 The economic problem");
+        COMMONLY_OVERUSED_TOPICS.add("1.2.6 Price determination");
+        COMMONLY_OVERUSED_TOPICS.add("1.2.2 Demand");
+    }
 
     public TopicValidator(String[] validTopics, TopicKeywordManager keywordManager) {
         this.validTopics = validTopics;
@@ -16,160 +26,187 @@ public class TopicValidator {
     }
 
     /**
-     * Validate and limit topics with very inclusive criteria
+     * Validate and limit topics with improved consistency and quality control
      */
     public String[] validateAndLimitTopics(String[] suggestedTopics, String questionText) {
         if (suggestedTopics == null) {
             return new String[] { determineFallbackTopic(questionText) };
         }
 
+        // Extract question characteristics for better validation
+        int estimatedMarks = estimateMarksFromText(questionText);
+        boolean isCalculationQuestion = TopicConstants.TopicAssignmentRules.isComputationalQuestion(questionText);
+        boolean requiresDiagram = TopicConstants.TopicAssignmentRules.requiresDiagramAnalysis(questionText);
+
+        // Determine appropriate number of topics
+        int maxTopics = TopicConstants.TopicAssignmentRules.getMaxTopicsForQuestion(estimatedMarks, questionText);
+
+        System.out.println("Question analysis - Estimated marks: " + estimatedMarks + 
+                          ", Calculation: " + isCalculationQuestion + 
+                          ", Diagram: " + requiresDiagram + 
+                          ", Max topics: " + maxTopics);
+
         // First validate all topics
-        List<String> validTopics = new ArrayList<>();
+        List<String> validatedTopics = new ArrayList<>();
         for (String suggestedTopic : suggestedTopics) {
             if (suggestedTopic == null || suggestedTopic.trim().isEmpty()) {
                 continue;
             }
 
             String validatedTopic = validateSingleTopic(suggestedTopic);
-            if (validatedTopic != null && !validatedTopic.isEmpty()) {
-                validTopics.add(validatedTopic);
+            if (validatedTopic != null && !validatedTopics.contains(validatedTopic)) {
+                validatedTopics.add(validatedTopic);
                 System.out.println("Validated topic: '" + suggestedTopic + "' → '" + validatedTopic + "'");
             }
         }
 
         // If no valid topics, return fallback
-        if (validTopics.isEmpty()) {
+        if (validatedTopics.isEmpty()) {
             return new String[] { determineFallbackTopic(questionText) };
         }
 
-        // Score topics based on relevance to question with very lenient thresholds
-        Map<String, Double> topicRelevanceScores = scoreTopicRelevance(validTopics, questionText);
+        // Apply quality filters
+        List<String> filteredTopics = applyQualityFilters(validatedTopics, questionText, isCalculationQuestion);
 
-        // Very inclusive filtering - much lower threshold for inclusion
-        List<String> finalTopics = topicRelevanceScores.entrySet().stream()
+        // Score and rank topics by relevance
+        Map<String, Double> topicScores = scoreTopicRelevance(filteredTopics, questionText, estimatedMarks);
+
+        // Select final topics based on scores and limits
+        List<String> finalTopics = topicScores.entrySet().stream()
                 .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                .limit(TopicConstants.MAX_TOPICS_PER_QUESTION)
-                .filter(entry -> entry.getValue() > 0.1) // Reduced from 0.3 to 0.1 (very inclusive)
+                .limit(maxTopics)
+                .filter(entry -> entry.getValue() > getMinimumScoreThreshold(isCalculationQuestion))
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toList());
 
-        // If we still have room and there are more valid topics, include them all
-        if (finalTopics.size() < TopicConstants.MAX_TOPICS_PER_QUESTION && validTopics.size() > finalTopics.size()) {
-            for (String topic : validTopics) {
-                if (!finalTopics.contains(topic) && finalTopics.size() < TopicConstants.MAX_TOPICS_PER_QUESTION) {
-                    finalTopics.add(topic);
-                    System.out.println("Added additional topic for comprehensive coverage: " + topic);
-                }
-            }
+        // Ensure we have at least one high-quality topic
+        if (finalTopics.isEmpty() && !filteredTopics.isEmpty()) {
+            finalTopics.add(filteredTopics.get(0));
         }
 
-        // If we still don't have enough topics, try to find more related ones
-        if (finalTopics.size() < 2 && questionText != null) {
-            List<String> additionalTopics = findAdditionalRelevantTopics(questionText, finalTopics);
-            for (String additionalTopic : additionalTopics) {
-                if (finalTopics.size() < TopicConstants.MAX_TOPICS_PER_QUESTION) {
-                    finalTopics.add(additionalTopic);
-                    System.out.println("Added related topic for better coverage: " + additionalTopic);
-                }
-            }
-        }
+        // Final validation and consistency check
+        String[] result = finalTopics.toArray(new String[0]);
+        result = ensureTopicConsistency(result, questionText);
 
-        // Ensure we have at least one topic
-        if (finalTopics.isEmpty()) {
-            return new String[] { validTopics.get(0) };
-        }
-
-        return finalTopics.toArray(new String[0]);
+        System.out.println("Final topic assignment: " + String.join(", ", result));
+        return result;
     }
 
     /**
-     * Find additional relevant topics by analyzing the question text more broadly
+     * Apply quality filters to remove inappropriate topics
      */
-    private List<String> findAdditionalRelevantTopics(String questionText, List<String> existingTopics) {
-        List<String> additionalTopics = new ArrayList<>();
-        String lowerQuestionText = questionText.toLowerCase();
+    private List<String> applyQualityFilters(List<String> topics, String questionText, boolean isCalculationQuestion) {
+        List<String> filtered = new ArrayList<>();
+        String lowerText = questionText.toLowerCase();
 
-        Map<String, List<String>> topicKeywords = keywordManager.getTopicKeywords();
+        for (String topic : topics) {
+            boolean shouldInclude = true;
 
-        for (String topic : validTopics) {
-            if (existingTopics.contains(topic)) {
-                continue; // Skip already included topics
-            }
-
-            double relevanceScore = 0;
-
-            // Check for keyword matches with very lenient criteria
-            if (topicKeywords.containsKey(topic)) {
-                List<String> keywords = topicKeywords.get(topic);
-                for (String keyword : keywords) {
-                    if (containsKeywordVeryFlexibly(lowerQuestionText, keyword.toLowerCase())) {
-                        relevanceScore += 0.5; // Lower weight for broad inclusion
-                    }
+            // Filter "The economic problem" unless explicitly relevant
+            if (topic.equals("1.1.3 The economic problem")) {
+                shouldInclude = TopicConstants.TopicAssignmentRules.shouldIncludeEconomicProblem(questionText, 5);
+                if (!shouldInclude) {
+                    System.out.println("Filtered out '1.1.3 The economic problem' - not explicitly relevant");
                 }
             }
 
-            // Include if there's any reasonable connection
-            if (relevanceScore > 0.3) { // Very low threshold
-                additionalTopics.add(topic);
+            // Filter out vague connections for calculation questions
+            if (isCalculationQuestion && !isDirectlyRelevantToCalculation(topic, lowerText)) {
+                shouldInclude = false;
+                System.out.println("Filtered out '" + topic + "' - not directly relevant to calculation");
+            }
+
+            // Filter out government intervention unless explicitly mentioned
+            if (topic.contains("Government intervention") && 
+                !lowerText.contains("government") && !lowerText.contains("policy") && 
+                !lowerText.contains("regulation") && !lowerText.contains("intervention")) {
+                shouldInclude = false;
+                System.out.println("Filtered out government intervention topic - not explicitly mentioned");
+            }
+
+            // Filter out market failure unless explicitly mentioned
+            if (topic.contains("market failure") && 
+                !lowerText.contains("market failure") && !lowerText.contains("externality") && 
+                !lowerText.contains("public good") && !lowerText.contains("information gap")) {
+                shouldInclude = false;
+                System.out.println("Filtered out market failure topic - not explicitly mentioned");
+            }
+
+            if (shouldInclude) {
+                filtered.add(topic);
             }
         }
 
-        return additionalTopics;
+        return filtered;
     }
 
     /**
-     * Score topics based on their relevance to the question text with very lenient scoring
+     * Check if topic is directly relevant to calculation questions
      */
-    private Map<String, Double> scoreTopicRelevance(List<String> topics, String questionText) {
+    private boolean isDirectlyRelevantToCalculation(String topic, String lowerText) {
+        // For calculation questions, be very strict about relevance
+        if (lowerText.contains("elasticity") && topic.contains("elasticities")) return true;
+        if (lowerText.contains("revenue") && topic.contains("Revenue")) return true;
+        if (lowerText.contains("cost") && topic.contains("Costs")) return true;
+        if (lowerText.contains("profit") && topic.contains("profit")) return true;
+        if (lowerText.contains("tax") && topic.contains("taxes")) return true;
+        if (lowerText.contains("gdp") && topic.contains("Economic growth")) return true;
+        if (lowerText.contains("unemployment") && topic.contains("unemployment")) return true;
+        if (lowerText.contains("inflation") && topic.contains("Inflation")) return true;
+        
+        // Supply and demand are often relevant to calculations
+        if ((lowerText.contains("supply") || lowerText.contains("demand")) && 
+            (topic.contains("Supply") || topic.contains("Demand"))) return true;
+            
+        return false;
+    }
+
+    /**
+     * Score topics based on relevance with improved algorithms
+     */
+    private Map<String, Double> scoreTopicRelevance(List<String> topics, String questionText, int estimatedMarks) {
         Map<String, Double> scores = new HashMap<>();
-        String lowerQuestionText = questionText.toLowerCase();
+        String lowerText = questionText.toLowerCase();
 
         for (String topic : topics) {
             double score = 0.0;
 
-            // Direct mention of topic gets high score
-            if (lowerQuestionText.contains(topic.toLowerCase())) {
-                score += 5.0;
+            // Base score for topic validation
+            score += 1.0;
+
+            // Direct mention gets highest score
+            String topicLower = topic.toLowerCase();
+            if (lowerText.contains(topicLower)) {
+                score += 10.0;
             }
 
-            // Check for any part of the topic title
-            String[] topicWords = topic.toLowerCase().split("\\s+");
+            // Check for key words from topic title
+            String[] topicWords = extractKeyWordsFromTopic(topic);
+            int matchingWords = 0;
             for (String word : topicWords) {
-                if (word.length() > 3 && lowerQuestionText.contains(word)) {
-                    score += 1.0;
+                if (word.length() > 3 && lowerText.contains(word.toLowerCase())) {
+                    matchingWords++;
+                    score += 2.0;
                 }
             }
 
-            // Check for keyword relevance with very lenient matching
-            Map<String, List<String>> topicKeywords = keywordManager.getTopicKeywords();
-            if (topicKeywords.containsKey(topic)) {
-                List<String> keywords = topicKeywords.get(topic);
-                int matchingKeywords = 0;
-                for (String keyword : keywords) {
-                    if (containsKeywordVeryFlexibly(lowerQuestionText, keyword.toLowerCase())) {
-                        matchingKeywords++;
-                        // Give points for any keyword match
-                        score += 0.5;
-                    }
-                }
-
-                // Bonus for multiple keyword matches (but lower threshold)
-                if (matchingKeywords > 0) {
-                    score += 0.5;
-                }
-                if (matchingKeywords > 2) {
-                    score += 1.0;
-                }
+            // Bonus for multiple word matches
+            if (matchingWords > 1) {
+                score += 3.0;
             }
 
-            // Check for related concept connections with broad interpretation
-            Map<String, List<String>> conceptRelationships = keywordManager.getConceptRelationships();
-            for (Map.Entry<String, List<String>> conceptEntry : conceptRelationships.entrySet()) {
-                String concept = conceptEntry.getKey();
-                if (lowerQuestionText.contains(concept.toLowerCase()) && 
-                    conceptEntry.getValue().contains(topic)) {
-                    score += 1.0; // Bonus for related concepts
-                }
+            // Check keyword relevance using keyword manager
+            score += getKeywordRelevanceScore(topic, lowerText);
+
+            // Penalty for commonly overused topics unless strongly relevant
+            if (COMMONLY_OVERUSED_TOPICS.contains(topic) && score < 8.0) {
+                score *= 0.7;
+                System.out.println("Applied penalty to commonly overused topic: " + topic);
+            }
+
+            // Bonus for topics that match question complexity
+            if (estimatedMarks >= 10 && isComplexTopic(topic)) {
+                score += 1.5;
             }
 
             scores.put(topic, score);
@@ -179,53 +216,196 @@ public class TopicValidator {
     }
 
     /**
-     * Very flexible keyword matching with multiple variations
+     * Extract key words from topic title for matching
      */
-    private boolean containsKeywordVeryFlexibly(String text, String keyword) {
-        // Original flexible matching
-        boolean basicMatch = text.contains(" " + keyword + " ") ||
+    private String[] extractKeyWordsFromTopic(String topic) {
+        // Extract the topic name part (after the code)
+        String topicName = topic.replaceFirst("^\\d+\\.\\d+\\.\\d+\\s+", "");
+        
+        // Split and filter meaningful words
+        return topicName.toLowerCase()
+                .replaceAll("[(),]", "")
+                .split("\\s+");
+    }
+
+    /**
+     * Get keyword relevance score using keyword manager
+     */
+    private double getKeywordRelevanceScore(String topic, String questionText) {
+        Map<String, List<String>> topicKeywords = keywordManager.getTopicKeywords();
+        
+        if (!topicKeywords.containsKey(topic)) {
+            return 0.0;
+        }
+
+        double score = 0.0;
+        List<String> keywords = topicKeywords.get(topic);
+        
+        for (String keyword : keywords) {
+            if (containsKeywordReasonably(questionText, keyword.toLowerCase())) {
+                score += 1.0;
+            }
+        }
+
+        return Math.min(score, 5.0); // Cap the keyword score
+    }
+
+    /**
+     * More reasonable keyword matching (less aggressive than before)
+     */
+    private boolean containsKeywordReasonably(String text, String keyword) {
+        return text.contains(" " + keyword + " ") ||
                text.startsWith(keyword + " ") ||
                text.endsWith(" " + keyword) ||
                text.contains(" " + keyword + ",") ||
                text.contains(" " + keyword + ".") ||
-               text.contains(" " + keyword + ";") ||
                text.contains("(" + keyword + ")") ||
-               text.contains(keyword + "'s") ||
-               text.contains(keyword + "s ") || // Plural forms
-               text.contains(keyword + "ing") || // Gerund forms
-               text.contains(keyword + "ed") || // Past tense forms
-               text.contains(keyword + "-") || // Hyphenated forms
-               text.contains("-" + keyword); // Reverse hyphenated forms
+               (keyword.length() > 5 && text.contains(keyword));
+    }
 
-        if (basicMatch) return true;
+    /**
+     * Check if topic is considered complex/advanced
+     */
+    private boolean isComplexTopic(String topic) {
+        return topic.contains("Oligopoly") ||
+               topic.contains("Monopoly") ||
+               topic.contains("game theory") ||
+               topic.contains("macroeconomic") ||
+               topic.contains("policies") ||
+               topic.contains("development") ||
+               topic.contains("globalisation");
+    }
 
-        // Additional very flexible matching
-        // Partial word matching for longer keywords
-        if (keyword.length() > 6) {
-            String[] keywordParts = keyword.split("\\s+");
-            for (String part : keywordParts) {
-                if (part.length() > 4 && text.contains(part)) {
-                    return true;
-                }
+    /**
+     * Get minimum score threshold based on question type
+     */
+    private double getMinimumScoreThreshold(boolean isCalculationQuestion) {
+        return isCalculationQuestion ? 3.0 : 2.0;
+    }
+
+    /**
+     * Ensure topic consistency and logical combinations
+     */
+    private String[] ensureTopicConsistency(String[] topics, String questionText) {
+        List<String> consistent = new ArrayList<>();
+        String lowerText = questionText.toLowerCase();
+
+        // Add topics in order of logical dependency
+        // 1. First add fundamental concepts
+        for (String topic : topics) {
+            if (isFundamentalTopic(topic)) {
+                consistent.add(topic);
             }
         }
 
-        // Synonym and related term matching
-        if (keyword.equals("demand") && (text.contains("consumer") || text.contains("buyer") || text.contains("purchase"))) return true;
-        if (keyword.equals("supply") && (text.contains("producer") || text.contains("seller") || text.contains("provision"))) return true;
-        if (keyword.equals("price") && (text.contains("cost") || text.contains("charge") || text.contains("fee"))) return true;
-        if (keyword.equals("market") && (text.contains("industry") || text.contains("sector") || text.contains("trade"))) return true;
-        if (keyword.equals("government") && (text.contains("state") || text.contains("public sector") || text.contains("authority"))) return true;
-        if (keyword.equals("profit") && (text.contains("revenue") || text.contains("earnings") || text.contains("income"))) return true;
-        if (keyword.equals("growth") && (text.contains("expansion") || text.contains("increase") || text.contains("development"))) return true;
-        if (keyword.equals("unemployment") && (text.contains("jobless") || text.contains("employment") || text.contains("jobs"))) return true;
-        if (keyword.equals("inflation") && (text.contains("prices") || text.contains("price level") || text.contains("cost of living"))) return true;
+        // 2. Then add specific application topics
+        for (String topic : topics) {
+            if (!isFundamentalTopic(topic) && !consistent.contains(topic)) {
+                consistent.add(topic);
+            }
+        }
 
+        // 3. Apply logical consistency rules
+        return applyConsistencyRules(consistent.toArray(new String[0]), lowerText);
+    }
+
+    /**
+     * Check if topic is fundamental/foundational
+     */
+    private boolean isFundamentalTopic(String topic) {
+        return topic.contains("Demand") ||
+               topic.contains("Supply") ||
+               topic.contains("Price determination") ||
+               topic.contains("Economics as a social science");
+    }
+
+    /**
+     * Apply consistency rules to prevent illogical combinations
+     */
+    private String[] applyConsistencyRules(String[] topics, String lowerText) {
+        List<String> finalTopics = new ArrayList<>();
+        
+        for (String topic : topics) {
+            boolean shouldInclude = true;
+            
+            // If we have specific elasticity topic, don't need general demand
+            if (topic.equals("1.2.2 Demand") && hasSpecificDemandTopic(topics)) {
+                shouldInclude = false;
+            }
+            
+            // If we have specific supply topic, don't need general supply in some cases
+            if (topic.equals("1.2.4 Supply") && hasSpecificSupplyTopic(topics) && topics.length > 2) {
+                shouldInclude = false;
+            }
+            
+            if (shouldInclude) {
+                finalTopics.add(topic);
+            }
+        }
+        
+        return finalTopics.toArray(new String[0]);
+    }
+
+    /**
+     * Check if we have more specific demand-related topics
+     */
+    private boolean hasSpecificDemandTopic(String[] topics) {
+        for (String topic : topics) {
+            if (topic.contains("elasticities of demand") || 
+                topic.contains("Consumer and producer surplus")) {
+                return true;
+            }
+        }
         return false;
     }
 
     /**
-     * Validate a single topic with very inclusive matching
+     * Check if we have more specific supply-related topics
+     */
+    private boolean hasSpecificSupplyTopic(String[] topics) {
+        for (String topic : topics) {
+            if (topic.contains("Elasticity of supply")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Estimate marks from question text for better validation
+     */
+    private int estimateMarksFromText(String questionText) {
+        // Look for explicit mark indicators
+        if (questionText.contains("(1)") || questionText.contains("1 mark")) return 1;
+        if (questionText.contains("(2)") || questionText.contains("2 marks")) return 2;
+        if (questionText.contains("(3)") || questionText.contains("3 marks")) return 3;
+        if (questionText.contains("(4)") || questionText.contains("4 marks")) return 4;
+        if (questionText.contains("(5)") || questionText.contains("5 marks")) return 5;
+        if (questionText.contains("(8)") || questionText.contains("8 marks")) return 8;
+        if (questionText.contains("(10)") || questionText.contains("10 marks")) return 10;
+        if (questionText.contains("(12)") || questionText.contains("12 marks")) return 12;
+        if (questionText.contains("(15)") || questionText.contains("15 marks")) return 15;
+        if (questionText.contains("(20)") || questionText.contains("20 marks")) return 20;
+        if (questionText.contains("(25)") || questionText.contains("25 marks")) return 25;
+
+        // Estimate based on question type
+        if (TopicConstants.TopicAssignmentRules.isComputationalQuestion(questionText)) {
+            return 3; // Most calculations are 2-4 marks
+        }
+        if (questionText.toLowerCase().contains("explain one")) {
+            return 3;
+        }
+        if (questionText.toLowerCase().contains("discuss") || 
+            questionText.toLowerCase().contains("evaluate") ||
+            questionText.toLowerCase().contains("assess")) {
+            return 12; // Essay questions
+        }
+
+        return 5; // Default estimate
+    }
+
+    /**
+     * Validate a single topic with stricter matching
      */
     public String validateSingleTopic(String topicResponse) {
         if (topicResponse == null) {
@@ -240,48 +420,24 @@ public class TopicValidator {
                 .replaceAll("(?i)The main topic is:?\\s*", "")
                 .replaceAll("(?i)The primary topic is:?\\s*", "");
 
-        // Check if the topic is in our list (exact match first)
+        // Check for exact match first
         for (String validTopic : validTopics) {
             if (cleanedTopic.equalsIgnoreCase(validTopic)) {
                 return validTopic;
             }
         }
 
-        // Try to find partial matches with very flexible criteria
+        // Try more lenient matching but still strict
         for (String validTopic : validTopics) {
-            // Check if the valid topic contains the suggested topic
-            if (validTopic.toLowerCase().contains(cleanedTopic.toLowerCase()) && cleanedTopic.length() > 2) {
+            // Must match the topic code exactly
+            String validCode = validTopic.split(" ")[0]; // e.g., "1.2.3"
+            if (cleanedTopic.startsWith(validCode) && cleanedTopic.length() > validCode.length()) {
                 return validTopic;
             }
 
-            // Check if the suggested topic contains the valid topic
-            if (validTopic.length() > 2 && cleanedTopic.toLowerCase().contains(validTopic.toLowerCase())) {
+            // Check for substantial word overlap
+            if (hasSubstantialWordOverlap(cleanedTopic, validTopic)) {
                 return validTopic;
-            }
-
-            // Check for word-by-word match with very lenient criteria
-            String[] validParts = validTopic.toLowerCase().split("\\s+");
-            String[] suggestedParts = cleanedTopic.toLowerCase().split("\\s+");
-
-            if (validParts.length > 1 && suggestedParts.length > 0) {
-                int matchingWords = 0;
-                for (String validPart : validParts) {
-                    if (validPart.length() <= 2) continue; // Skip short words
-
-                    for (String suggestedPart : suggestedParts) {
-                        if (validPart.equals(suggestedPart) || 
-                            (validPart.length() > 2 && suggestedPart.contains(validPart)) ||
-                            (suggestedPart.length() > 2 && validPart.contains(suggestedPart))) {
-                            matchingWords++;
-                            break;
-                        }
-                    }
-                }
-
-                // Very lenient matching criteria - just need some word overlap
-                if (matchingWords >= 1 && matchingWords >= Math.max(1, validParts.length - 3)) {
-                    return validTopic;
-                }
             }
         }
 
@@ -289,99 +445,69 @@ public class TopicValidator {
     }
 
     /**
-     * Determine a fallback topic based on content analysis with comprehensive coverage
+     * Check for substantial word overlap between topics
+     */
+    private boolean hasSubstantialWordOverlap(String suggested, String valid) {
+        String[] suggestedWords = suggested.toLowerCase().split("\\s+");
+        String[] validWords = valid.toLowerCase().split("\\s+");
+        
+        int matches = 0;
+        int significantWords = 0;
+        
+        for (String validWord : validWords) {
+            if (validWord.length() > 3) { // Skip short words like "and", "of"
+                significantWords++;
+                for (String suggestedWord : suggestedWords) {
+                    if (validWord.equals(suggestedWord)) {
+                        matches++;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Need at least 50% overlap of significant words
+        return significantWords > 0 && (double) matches / significantWords >= 0.5;
+    }
+
+    /**
+     * Determine a fallback topic with improved logic
      */
     public String determineFallbackTopic(String questionText) {
         if (questionText == null) {
-            return "1.2.2 Demand"; // Default topic
+            return "1.2.2 Demand"; // Safe default
         }
 
-        questionText = questionText.toLowerCase();
+        String lowerText = questionText.toLowerCase();
 
-        // Enhanced fallback logic with many more topics
-        
-        // Check for specific economic concepts
-        if (questionText.contains("globalisation") || questionText.contains("globalization") ||
-                questionText.contains("global") || questionText.contains("multinational")) {
-            return "4.1.1 Globalisation";
+        // More specific fallback logic
+        if (lowerText.contains("calculate") || lowerText.contains("work out")) {
+            if (lowerText.contains("elasticity")) return "1.2.3 Price, income and cross elasticities of demand";
+            if (lowerText.contains("revenue") || lowerText.contains("profit")) return "3.3.1 Revenue";
+            if (lowerText.contains("cost")) return "3.3.2 Costs";
+            if (lowerText.contains("gdp")) return "2.1.1 Economic growth";
+            if (lowerText.contains("unemployment")) return "2.1.3 Employment and unemployment";
         }
 
-        if (questionText.contains("trade") || questionText.contains("import") || questionText.contains("export")) {
-            return "4.1.2 Specialisation and trade";
+        if (lowerText.contains("draw") || lowerText.contains("diagram")) {
+            if (lowerText.contains("supply") && lowerText.contains("demand")) return "1.2.6 Price determination";
+            if (lowerText.contains("market")) return "1.2.6 Price determination";
         }
 
-        if (questionText.contains("fiscal policy") || questionText.contains("government spending") ||
-                questionText.contains("taxation") || questionText.contains("budget")) {
-            return "2.6.2 Demand-side policies";
-        }
+        // Check for key economic terms
+        if (lowerText.contains("supply") && !lowerText.contains("demand")) return "1.2.4 Supply";
+        if (lowerText.contains("price") && lowerText.contains("determine")) return "1.2.6 Price determination";
+        if (lowerText.contains("elasticity")) return "1.2.3 Price, income and cross elasticities of demand";
+        if (lowerText.contains("government") && lowerText.contains("intervention")) return "1.4.1 Government intervention in markets";
+        if (lowerText.contains("market failure")) return "1.3.1 Types of market failure";
+        if (lowerText.contains("externality")) return "1.3.2 Externalities";
+        if (lowerText.contains("monopoly")) return "3.4.5 Monopoly";
+        if (lowerText.contains("competition")) return "3.4.2 Perfect competition";
+        if (lowerText.contains("unemployment")) return "2.1.3 Employment and unemployment";
+        if (lowerText.contains("inflation")) return "2.1.2 Inflation";
+        if (lowerText.contains("growth")) return "2.1.1 Economic growth";
 
-        if (questionText.contains("monetary policy") || questionText.contains("interest rate") ||
-                questionText.contains("central bank") || questionText.contains("money supply")) {
-            return "2.6.2 Demand-side policies";
-        }
-
-        if (questionText.contains("externality") || questionText.contains("externalities") ||
-                questionText.contains("pollution") || questionText.contains("environment")) {
-            return "1.3.2 Externalities";
-        }
-
-        if (questionText.contains("monopoly") || questionText.contains("market power")) {
-            return "3.4.5 Monopoly";
-        }
-
-        if (questionText.contains("oligopoly") || questionText.contains("few firms")) {
-            return "3.4.4 Oligopoly";
-        }
-
-        if (questionText.contains("perfect competition") || questionText.contains("competitive market")) {
-            return "3.4.2 Perfect competition";
-        }
-
-        if (questionText.contains("elasticity") || questionText.contains("elastic") || questionText.contains("responsive")) {
-            return "1.2.3 Price, income and cross elasticities of demand";
-        }
-
-        if (questionText.contains("supply") && !questionText.contains("demand")) {
-            return "1.2.4 Supply";
-        }
-
-        if (questionText.contains("price") && (questionText.contains("determination") || questionText.contains("equilibrium"))) {
-            return "1.2.6 Price determination";
-        }
-
-        if (questionText.contains("consumer surplus") || questionText.contains("producer surplus")) {
-            return "1.2.8 Consumer and producer surplus";
-        }
-
-        if (questionText.contains("unemployment") || questionText.contains("employment") || questionText.contains("jobless")) {
-            return "2.1.3 Employment and unemployment";
-        }
-
-        if (questionText.contains("inflation") || questionText.contains("price level") || questionText.contains("deflation")) {
-            return "2.1.2 Inflation";
-        }
-
-        if (questionText.contains("growth") || questionText.contains("gdp")) {
-            return "2.1.1 Economic growth";
-        }
-
-        if (questionText.contains("costs") || questionText.contains("revenue") || questionText.contains("profit")) {
-            return "3.3.1 Revenue";
-        }
-
-        if (questionText.contains("labour") || questionText.contains("labor") || questionText.contains("wage")) {
-            return "3.5.1 Demand for labour";
-        }
-
-        if (questionText.contains("development") || questionText.contains("developing")) {
-            return "4.3.1 Measures of development";
-        }
-
-        if (questionText.contains("poverty") || questionText.contains("inequality")) {
-            return "4.2.1 Absolute and relative poverty";
-        }
-
-        // If no specific pattern matches, return a common topic as default
+        // Default to demand as most common topic
         return "1.2.2 Demand";
     }
 }

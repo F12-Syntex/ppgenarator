@@ -5,10 +5,10 @@ import java.util.List;
 
 public class TopicConstants {
 
-    public static final int BATCH_SIZE = 5;  // Increased to 5 for better context
-    public static final int MAX_TOPICS_PER_QUESTION = 5;  // Reduced to 3 for more focused topic assignment
-    public static final double KEYWORD_THRESHOLD = 1;  // Increased to 1.5 for stronger primary topic matches 
-    public static final double SECONDARY_TOPIC_THRESHOLD = 1;  // Increased to 0.6 for more relevant secondary topics
+    public static final int BATCH_SIZE = 3;  // Reduced for better accuracy
+    public static final int MAX_TOPICS_PER_QUESTION = 4;  // Reduced from 5 for more focused tagging
+    public static final double KEYWORD_THRESHOLD = 2.0;  // Increased for stricter matching
+    public static final double SECONDARY_TOPIC_THRESHOLD = 1.5;  // Increased for better secondary topics
 
     // A-level Economics specification topics (comprehensive list)
     public static final String[] DEFAULT_TOPICS = {
@@ -119,8 +119,75 @@ public class TopicConstants {
         "using the graph",
         "according to the data",
         "from the data shown",
-        "with reference to extract"
+        "with reference to extract",
+        "calculate",
+        "show your working",
+        "you are advised to show",
+        "marks available",
+        "section a",
+        "section b",
+        "section c"
     };
+
+    // Rules for topic assignment based on question characteristics
+    public static class TopicAssignmentRules {
+        
+        /**
+         * Determine maximum topics based on question marks and type
+         */
+        public static int getMaxTopicsForQuestion(int marks, String questionText) {
+            if (marks <= 2) {
+                return 2; // Simple calculation/definition questions
+            } else if (marks <= 5) {
+                return 3; // Short answer questions
+            } else if (marks <= 10) {
+                return 4; // Medium questions
+            } else {
+                return 4; // Essay questions - keep focused
+            }
+        }
+        
+        /**
+         * Determine if "The economic problem" should be included
+         */
+        public static boolean shouldIncludeEconomicProblem(String questionText, int marks) {
+            questionText = questionText.toLowerCase();
+            
+            // Only include if explicitly about scarcity, choice, opportunity cost
+            return marks >= 5 && (
+                questionText.contains("scarcity") ||
+                questionText.contains("opportunity cost") ||
+                questionText.contains("choice") ||
+                questionText.contains("resource allocation") ||
+                questionText.contains("limited resources")
+            );
+        }
+        
+        /**
+         * Check if question is primarily computational/definitional
+         */
+        public static boolean isComputationalQuestion(String questionText) {
+            questionText = questionText.toLowerCase();
+            return questionText.contains("calculate") ||
+                   questionText.contains("work out") ||
+                   questionText.contains("find the") ||
+                   questionText.contains("what is the value") ||
+                   questionText.contains("determine the") ||
+                   questionText.contains("compute");
+        }
+        
+        /**
+         * Check if question requires diagram/graph analysis
+         */
+        public static boolean requiresDiagramAnalysis(String questionText) {
+            questionText = questionText.toLowerCase();
+            return questionText.contains("draw") ||
+                   questionText.contains("diagram") ||
+                   questionText.contains("graph") ||
+                   questionText.contains("illustrate") ||
+                   questionText.contains("show on");
+        }
+    }
 
     // Helper methods to extract hierarchy information
     public static String getThemeFromTopic(String topic) {
@@ -233,8 +300,8 @@ public class TopicConstants {
                 return "Theme 1".equals(theme) || "Theme 2".equals(theme);
             case "a level":
             case "alevel":
-                // A Level covers Themes 3 and 4
-                return "Theme 3".equals(theme) || "Theme 4".equals(theme);
+                // A Level covers all themes, but Themes 3 and 4 are A-Level specific
+                return true;
             default:
                 // For unknown qualifications, include all themes
                 return true;
