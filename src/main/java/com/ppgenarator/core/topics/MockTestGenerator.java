@@ -21,7 +21,7 @@ public class MockTestGenerator {
     private int maxMocksPerTopic = 1; // Maximum number of mocks per topic/major topic
     
     // Fixed time periods for mocks (in minutes)
-    private static final int[] TARGET_TIMES = {25, 30, 35};
+    private static final int[] TARGET_TIMES = {30, 35, 40};
 
     private CoverPageCreator coverPageCreator;
     private MockTestPdfCreator mockTestPdfCreator;

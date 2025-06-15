@@ -19,7 +19,7 @@ public class TopicCompiler {
     private int targetMarksPerMock = 20;
     private int mockTime = 25;
     private int minimumQ1To5MockTests = 1;
-    private boolean createQ1To5OnlyMocks = true;
+    private boolean createQ1To5OnlyMocks = false;
 
     private QuestionLoader questionLoader;
     private MockTestGenerator mockTestGenerator;
@@ -34,7 +34,8 @@ public class TopicCompiler {
         }
 
         this.questionLoader = new QuestionLoader();
-        this.mockTestGenerator = new MockTestGenerator(targetMarksPerMock, minimumQ1To5MockTests, createQ1To5OnlyMocks, mockTime);
+        this.mockTestGenerator = new MockTestGenerator(targetMarksPerMock, minimumQ1To5MockTests, createQ1To5OnlyMocks,
+                mockTime);
         this.pdfMerger = new PdfMerger();
     }
 
@@ -58,8 +59,8 @@ public class TopicCompiler {
             List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
             System.out.println("Loaded " + allQuestions.size() + " questions from JSON files");
 
-            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic
-                    = groupQuestionsByQualificationAndTopic(allQuestions);
+            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic = groupQuestionsByQualificationAndTopic(
+                    allQuestions);
 
             processQualificationTopics(questionsByQualificationAndTopic);
 
@@ -71,7 +72,8 @@ public class TopicCompiler {
         }
     }
 
-    private Map<String, Map<String, List<Question>>> groupQuestionsByQualificationAndTopic(List<Question> allQuestions) {
+    private Map<String, Map<String, List<Question>>> groupQuestionsByQualificationAndTopic(
+            List<Question> allQuestions) {
         Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic = new HashMap<>();
 
         for (Question question : allQuestions) {
@@ -126,7 +128,8 @@ public class TopicCompiler {
         }
     }
 
-    private void processIndividualTopic(String topic, List<Question> topicQuestions, File mocksRootDir, String qualification)
+    private void processIndividualTopic(String topic, List<Question> topicQuestions, File mocksRootDir,
+            String qualification)
             throws IOException {
 
         List<Question> uniqueTopicQuestions = removeDuplicateQuestions(topicQuestions);
@@ -150,7 +153,8 @@ public class TopicCompiler {
         allQuestionsDir.mkdirs();
         mocksDir.mkdirs();
 
-        System.out.println("Creating resources for " + topic + " with " + uniqueTopicQuestions.size() + " unique questions");
+        System.out.println(
+                "Creating resources for " + topic + " with " + uniqueTopicQuestions.size() + " unique questions");
 
         // Create combined questions and markschemes PDF
         pdfMerger.createCombinedQuestionsPdf(uniqueTopicQuestions, allQuestionsDir);
@@ -193,8 +197,9 @@ public class TopicCompiler {
 
             Map<String, List<Question>> questionsByQualification = allQuestions.stream()
                     .collect(Collectors.groupingBy(
-                            q -> q.getQualification() != null ? convertQualificationName(q.getQualification().toString().toLowerCase())
-                            : "unknown"));
+                            q -> q.getQualification() != null
+                                    ? convertQualificationName(q.getQualification().toString().toLowerCase())
+                                    : "unknown"));
 
             for (Map.Entry<String, List<Question>> entry : questionsByQualification.entrySet()) {
                 String qualification = entry.getKey();
@@ -221,10 +226,11 @@ public class TopicCompiler {
             List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
             System.out.println("Loaded " + allQuestions.size() + " questions for comprehensive topic mock generation");
 
-            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic
-                    = groupQuestionsByQualificationAndTopic(allQuestions);
+            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic = groupQuestionsByQualificationAndTopic(
+                    allQuestions);
 
-            for (Map.Entry<String, Map<String, List<Question>>> qualEntry : questionsByQualificationAndTopic.entrySet()) {
+            for (Map.Entry<String, Map<String, List<Question>>> qualEntry : questionsByQualificationAndTopic
+                    .entrySet()) {
                 String qualification = qualEntry.getKey();
                 Map<String, List<Question>> topicMap = qualEntry.getValue();
 
@@ -268,14 +274,15 @@ public class TopicCompiler {
     public void generateTopicOverview() {
         try {
             List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
-            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic
-                    = groupQuestionsByQualificationAndTopic(allQuestions);
+            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic = groupQuestionsByQualificationAndTopic(
+                    allQuestions);
 
             // Create overview directory as 'mocks/topic_overview'
             File overviewDir = new File(outputDir, "topic_overview");
             overviewDir.mkdirs();
 
-            for (Map.Entry<String, Map<String, List<Question>>> qualEntry : questionsByQualificationAndTopic.entrySet()) {
+            for (Map.Entry<String, Map<String, List<Question>>> qualEntry : questionsByQualificationAndTopic
+                    .entrySet()) {
                 String qualification = qualEntry.getKey();
                 Map<String, List<Question>> topicMap = qualEntry.getValue();
 

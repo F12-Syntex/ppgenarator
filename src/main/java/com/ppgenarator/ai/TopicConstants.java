@@ -5,8 +5,8 @@ import java.util.List;
 
 public class TopicConstants {
 
-    public static final int BATCH_SIZE = 3;  // Reduced for better accuracy
-    public static final int MAX_TOPICS_PER_QUESTION = 4;  // Reduced from 5 for more focused tagging
+    public static final int BATCH_SIZE = 5;  // Reduced for better accuracy
+    public static final int MAX_TOPICS_PER_QUESTION = 100;  // Reduced from 5 for more focused tagging
     public static final double KEYWORD_THRESHOLD = 2.0;  // Increased for stricter matching
     public static final double SECONDARY_TOPIC_THRESHOLD = 1.5;  // Increased for better secondary topics
 
