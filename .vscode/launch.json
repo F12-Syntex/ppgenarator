@@ -6,7 +6,7 @@
             "type": "java",
             "name": "TopicCompiler",
             "request": "launch",
-            "mainClass": "com.ppgenarator.core.TopicCompiler",
+            "mainClass": "com.ppgenarator.core.Generator",
             "projectName": "ppgenarator"
         },
         {
@@ -20,7 +20,7 @@
             "type": "java",
             "name": "PastPaperDownloader",
             "request": "launch",
-            "mainClass": "com.ppgenarator.core.PastPaperDownloader",
+            "mainClass": "com.ppgenarator.core.Generator",
             "projectName": "ppgenarator"
         },
         {

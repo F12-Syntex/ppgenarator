@@ -15,43 +15,30 @@ import com.ppgenerator.types.Question;
 public class TopicCompiler {
 
     private File metadataDir;
-    private File outputDir; // This will point to the 'mocks' folder
+    private File outputDir;
     private int targetMarksPerMock = 20;
     private int mockTime = 25;
-    private int minimumQ1To5MockTests = 1;
-    private boolean createQ1To5OnlyMocks = false;
+    private int minimumQ1To5MockTests = 0; // Disabled for single mock structure
+    private boolean createQ1To5OnlyMocks = false; // Disabled for single mock structure
 
     private QuestionLoader questionLoader;
-    private MockTestGenerator mockTestGenerator;
+    private SingleMockGenerator singleMockGenerator;
     private PdfMerger pdfMerger;
 
     public TopicCompiler(File metadataDir, File parentOutputDir) {
         this.metadataDir = metadataDir;
-        // All output goes into the 'mocks' subdirectory of the given output directory
-        this.outputDir = new File(parentOutputDir, "mocks");
+        this.outputDir = parentOutputDir;
         if (!this.outputDir.exists()) {
             this.outputDir.mkdirs();
         }
 
         this.questionLoader = new QuestionLoader();
-        this.mockTestGenerator = new MockTestGenerator(targetMarksPerMock, minimumQ1To5MockTests, createQ1To5OnlyMocks,
-                mockTime);
+        this.singleMockGenerator = new SingleMockGenerator();
         this.pdfMerger = new PdfMerger();
     }
 
     public void setTargetMarksPerMock(int targetMarksPerMock) {
         this.targetMarksPerMock = targetMarksPerMock;
-        this.mockTestGenerator.setTargetMarksPerMock(targetMarksPerMock);
-    }
-
-    public void setMinimumQ1To5MockTests(int minimumQ1To5MockTests) {
-        this.minimumQ1To5MockTests = minimumQ1To5MockTests;
-        this.mockTestGenerator.setMinimumQ1To5MockTests(minimumQ1To5MockTests);
-    }
-
-    public void setCreateQ1To5OnlyMocks(boolean createQ1To5OnlyMocks) {
-        this.createQ1To5OnlyMocks = createQ1To5OnlyMocks;
-        this.mockTestGenerator.setCreateQ1To5OnlyMocks(createQ1To5OnlyMocks);
     }
 
     public void compileByTopic() {
@@ -122,15 +109,13 @@ public class TopicCompiler {
                         + " in qualification: " + qualification
                         + " with " + topicQuestions.size() + " questions");
 
-                // Output all topics inside the 'mocks' directory
                 processIndividualTopic(topic, topicQuestions, outputDir, qualification);
             }
         }
     }
 
-    private void processIndividualTopic(String topic, List<Question> topicQuestions, File mocksRootDir,
-            String qualification)
-            throws IOException {
+    private void processIndividualTopic(String topic, List<Question> topicQuestions, File outputDir,
+            String qualification) throws IOException {
 
         List<Question> uniqueTopicQuestions = removeDuplicateQuestions(topicQuestions);
 
@@ -139,29 +124,20 @@ public class TopicCompiler {
             return;
         }
 
-        // Create directory for this individual topic inside 'mocks'
+        // Create directory for this topic directly in output directory
         String topicDirName = FileUtils.sanitizeFileName(topic);
-        File topicDir = new File(mocksRootDir, topicDirName);
+        File topicDir = new File(outputDir, topicDirName);
         if (!topicDir.exists()) {
             topicDir.mkdirs();
         }
 
-        // Create the main directories
-        File allQuestionsDir = new File(topicDir, "all questions");
-        File mocksDir = new File(topicDir, "mocks");
+        System.out.println("Creating single mock for " + topic + " with " + uniqueTopicQuestions.size() + " unique questions");
 
-        allQuestionsDir.mkdirs();
-        mocksDir.mkdirs();
+        // Create all questions with markscheme PDF
+        pdfMerger.createCombinedQuestionsPdf(uniqueTopicQuestions, topicDir);
 
-        System.out.println(
-                "Creating resources for " + topic + " with " + uniqueTopicQuestions.size() + " unique questions");
-
-        // Create combined questions and markschemes PDF
-        pdfMerger.createCombinedQuestionsPdf(uniqueTopicQuestions, allQuestionsDir);
-
-        // Create topic-specific mock tests
-        mockTestGenerator.createTopicSpecificMocks(uniqueTopicQuestions, mocksDir, qualification,
-                TopicConstants.getSubTopicName(topic), topic);
+        // Create single mock test targeting specific time periods
+        singleMockGenerator.createSingleMock(uniqueTopicQuestions, topicDir, qualification, topic);
 
         System.out.println("Completed processing for " + topic + " (" + qualification + ")");
     }
@@ -205,65 +181,15 @@ public class TopicCompiler {
                 String qualification = entry.getKey();
                 List<Question> qualificationQuestions = entry.getValue();
 
-                // Write the report directly to the 'mocks' directory
-                File qualificationDir = outputDir;
-
-                if (qualificationDir.exists()) {
+                if (outputDir.exists()) {
                     TopicSummaryReportCreator reportCreator = new TopicSummaryReportCreator();
-                    reportCreator.createTopicSummaryReport(qualificationQuestions, qualificationDir, qualification);
+                    reportCreator.createTopicSummaryReport(qualificationQuestions, outputDir, qualification);
                     System.out.println("Created analysis report for " + qualification);
                 }
             }
 
         } catch (Exception e) {
             System.err.println("Error creating topic analysis reports: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    public void generateAllTopicMocks() {
-        try {
-            List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
-            System.out.println("Loaded " + allQuestions.size() + " questions for comprehensive topic mock generation");
-
-            Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic = groupQuestionsByQualificationAndTopic(
-                    allQuestions);
-
-            for (Map.Entry<String, Map<String, List<Question>>> qualEntry : questionsByQualificationAndTopic
-                    .entrySet()) {
-                String qualification = qualEntry.getKey();
-                Map<String, List<Question>> topicMap = qualEntry.getValue();
-
-                for (Map.Entry<String, List<Question>> topicEntry : topicMap.entrySet()) {
-                    String topic = topicEntry.getKey();
-                    List<Question> topicQuestions = topicEntry.getValue();
-
-                    if (!topicQuestions.isEmpty()) {
-                        List<Question> uniqueQuestions = removeDuplicateQuestions(topicQuestions);
-
-                        // Create directory structure for individual topics under 'mocks'
-                        File topicDir = new File(outputDir, FileUtils.sanitizeFileName(topic));
-                        topicDir.mkdirs();
-
-                        File mocksDir = new File(topicDir, "mocks");
-                        mocksDir.mkdirs();
-
-                        File allQuestionsDir = new File(topicDir, "all questions");
-                        allQuestionsDir.mkdirs();
-
-                        pdfMerger.createCombinedQuestionsPdf(uniqueQuestions, allQuestionsDir);
-
-                        mockTestGenerator.createTopicSpecificMocks(uniqueQuestions, mocksDir,
-                                qualification, topic, topic);
-
-                        System.out.println("Generated individual topic resources for " + topic + " (" + qualification
-                                + ") with " + uniqueQuestions.size() + " questions");
-                    }
-                }
-            }
-
-        } catch (Exception e) {
-            System.err.println("Error generating individual topic resources: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -277,7 +203,7 @@ public class TopicCompiler {
             Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic = groupQuestionsByQualificationAndTopic(
                     allQuestions);
 
-            // Create overview directory as 'mocks/topic_overview'
+            // Create overview directory
             File overviewDir = new File(outputDir, "topic_overview");
             overviewDir.mkdirs();
 

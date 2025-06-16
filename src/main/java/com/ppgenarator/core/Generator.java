@@ -26,6 +26,7 @@ public class Generator {
 
         //download past papers
         // downloadPastPapers();
+
         // Process past papers if needed
         processAllPastPapers();
 
