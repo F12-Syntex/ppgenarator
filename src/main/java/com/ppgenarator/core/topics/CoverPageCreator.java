@@ -8,8 +8,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 
 import com.ppgenarator.utils.FormattingUtils;
 import com.ppgenarator.utils.QuestionUtils;
@@ -21,8 +21,13 @@ public class CoverPageCreator {
     private static final PDFont FONT_BOLD = PDType1Font.HELVETICA_BOLD;
     private static final PDFont FONT_NORMAL = PDType1Font.HELVETICA;
 
-    public File createCoverPage(int mockTestNumber, List<Question> questions, int totalMarks,
-            int estimatedMinutes, String qualification, String topic, File mockTestDir) throws IOException {
+    public File createCoverPage(int mockTestNumber,
+                                List<Question> questions,
+                                int totalMarks,
+                                int estimatedMinutes,
+                                String qualification,
+                                String topic,
+                                File mockTestDir) throws IOException {
 
         File coverPageFile = new File(mockTestDir, "cover_page.pdf");
 
@@ -30,266 +35,189 @@ public class CoverPageCreator {
             PDPage page = new PDPage(PDRectangle.A4);
             document.addPage(page);
 
-            try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
-                createSimpleCoverPage(contentStream, page, questions, totalMarks, estimatedMinutes,
-                        qualification, topic, false, mockTestNumber);
+            try (PDPageContentStream cs = new PDPageContentStream(document, page)) {
+                drawCoverPage(cs, page, questions, totalMarks, estimatedMinutes, topic);
             }
 
             document.save(coverPageFile);
         }
+
         return coverPageFile;
     }
 
-    public File createQ1To5CoverPage(int mockTestNumber, List<Question> questions, int totalMarks,
-            int estimatedMinutes, String qualification, String topic, File mockTestDir) throws IOException {
-
-        File coverPageFile = new File(mockTestDir, "cover_page.pdf");
-
-        try (PDDocument document = new PDDocument()) {
-            PDPage page = new PDPage(PDRectangle.A4);
-            document.addPage(page);
-
-            try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
-                createSimpleCoverPage(contentStream, page, questions, totalMarks, estimatedMinutes,
-                        qualification, topic, true, mockTestNumber);
-            }
-
-            document.save(coverPageFile);
-        }
-        return coverPageFile;
-    }
-
-    private void createSimpleCoverPage(PDPageContentStream contentStream, PDPage page, List<Question> questions,
-            int totalMarks, int estimatedMinutes, String qualification, String topic,
-            boolean isQ1To5Only, int mockTestNumber) throws IOException {
+    private void drawCoverPage(PDPageContentStream cs,
+                               PDPage page,
+                               List<Question> questions,
+                               int totalMarks,
+                               int estimatedMinutes,
+                               String unitOrTopic) throws IOException {
 
         float pageWidth = page.getMediaBox().getWidth();
         float pageHeight = page.getMediaBox().getHeight();
-        float yPosition = pageHeight - MARGIN;
+        float y = pageHeight - 60;
 
-        // Simple border
-        contentStream.setLineWidth(1.5f);
-        contentStream.addRect(MARGIN - 20, MARGIN - 20, pageWidth - (2 * MARGIN) + 40, pageHeight - (2 * MARGIN) + 40);
-        contentStream.stroke();
+        // Border
+        cs.setLineWidth(1.2f);
+        cs.addRect(MARGIN - 20, MARGIN - 20,
+                pageWidth - (2 * MARGIN) + 40,
+                pageHeight - (2 * MARGIN) + 40);
+        cs.stroke();
 
-        yPosition -= 20;
+        // Title
+        cs.beginText();
+        cs.setFont(FONT_BOLD, 28);
+        centerText(cs, "BEST TUTORS", pageWidth, y);
+        cs.endText();
+        y -= 50;
 
-        // Header
-        yPosition = createHeader(contentStream, pageWidth, yPosition);
-        yPosition -= 40;
+        // Name, Ref, Date lines (no "Student Information")
+        drawLineWithLabel(cs, MARGIN, y, "Name:", 250);
+        drawLineWithLabel(cs, pageWidth - 200, y, "Ref:", 120);
+        y -= 40;
 
-        // Student information section
-        yPosition = createStudentSection(contentStream, pageWidth, yPosition);
-        yPosition -= 80;
+        drawLineWithLabel(cs, MARGIN, y, "Date:", 200);
+        y -= 60;
 
-        // Subject information
-        yPosition = createSubjectInfo(contentStream, pageWidth, yPosition, qualification, topic);
-        yPosition -= 60;
+        // Mock Title (just "Theme X Mock Test")
+        cs.beginText();
+        cs.setFont(FONT_BOLD, 16);
+        centerText(cs, unitOrTopic + " Mock Test", pageWidth, y);
+        cs.endText();
+        y -= 50;
 
-        // Test type (if Q1-5)
-        // if (isQ1To5Only) {
-        // yPosition = createTestType(contentStream, pageWidth, yPosition);
-        // yPosition -= 60;
-        // }
-
-        // Test details (improved boxes)
-        yPosition = createTestDetails(contentStream, pageWidth, yPosition, questions.size(),
-                totalMarks, estimatedMinutes);
-        yPosition -= 100;
-
-        // Instructions
-        createInstructions(contentStream, pageWidth, yPosition);
-    }
-
-    private float createHeader(PDPageContentStream contentStream, float pageWidth, float yPosition) throws IOException {
-
-        // Main title only
-        contentStream.beginText();
-        contentStream.setFont(FONT_BOLD, 32);
-        String title = "BEST TUTORS";
-        float titleWidth = FONT_BOLD.getStringWidth(title) / 1000 * 32;
-        contentStream.newLineAtOffset((pageWidth - titleWidth) / 2, yPosition);
-        contentStream.showText(title);
-        contentStream.endText();
-
-        return yPosition - 40;
-    }
-
-    private float createSubjectInfo(PDPageContentStream contentStream, float pageWidth, float yPosition,
-            String qualification, String topic) throws IOException {
-
-        // Subject
-        contentStream.beginText();
-        contentStream.setFont(FONT_BOLD, 18);
-        String subjectText = "Subject: " + FormattingUtils.formatTopicName(topic);
-        float subjectWidth = FONT_BOLD.getStringWidth(subjectText) / 1000 * 18;
-        contentStream.newLineAtOffset((pageWidth - subjectWidth) / 2, yPosition);
-        contentStream.showText(subjectText);
-        contentStream.endText();
-
-        // Qualification
-        contentStream.beginText();
-        contentStream.setFont(FONT_NORMAL, 14);
-        String qualText = "Qualification: " + FormattingUtils.formatQualificationName(qualification);
-        float qualWidth = FONT_NORMAL.getStringWidth(qualText) / 1000 * 14;
-        contentStream.newLineAtOffset((pageWidth - qualWidth) / 2, yPosition - 30);
-        contentStream.showText(qualText);
-        contentStream.endText();
-
-        return yPosition - 40;
-    }
-
-    private float createTestType(PDPageContentStream contentStream, float pageWidth, float yPosition)
-            throws IOException {
-
-        // Box for test type
-        float boxWidth = 300;
-        float boxHeight = 40;
-        float boxX = (pageWidth - boxWidth) / 2;
-
-        contentStream.setLineWidth(2f);
-        contentStream.addRect(boxX, yPosition - boxHeight, boxWidth, boxHeight);
-        contentStream.stroke();
-
-        contentStream.beginText();
-        contentStream.setFont(FONT_BOLD, 16);
-        String testType = "Foundation Test (Questions 1-5)";
-        float textWidth = FONT_BOLD.getStringWidth(testType) / 1000 * 16;
-        contentStream.newLineAtOffset((pageWidth - textWidth) / 2, yPosition - 25);
-        contentStream.showText(testType);
-        contentStream.endText();
-
-        return yPosition - 50;
-    }
-
-    private float createTestDetails(PDPageContentStream contentStream, float pageWidth, float yPosition,
-            int questionCount, int totalMarks, int estimatedMinutes) throws IOException {
-
-        float boxWidth = 150;
-        float boxHeight = 80;
-        float spacing = 30;
+        // Stats Boxes
+        float boxWidth = 140, boxHeight = 70, spacing = 40;
         float totalWidth = (3 * boxWidth) + (2 * spacing);
         float startX = (pageWidth - totalWidth) / 2;
-
-        String[] labels = { "Questions", "Total Marks", "Time Allowed" };
-        String[] values = { String.valueOf(questionCount), String.valueOf(totalMarks), estimatedMinutes + " min" };
-
-        for (int i = 0; i < 3; i++) {
-            float boxX = startX + (i * (boxWidth + spacing));
-
-            // Draw box
-            contentStream.setLineWidth(2f);
-            contentStream.addRect(boxX, yPosition - boxHeight, boxWidth, boxHeight);
-            contentStream.stroke();
-
-            // Label
-            contentStream.beginText();
-            contentStream.setFont(FONT_BOLD, 12);
-            float labelWidth = FONT_BOLD.getStringWidth(labels[i]) / 1000 * 12;
-            contentStream.newLineAtOffset(boxX + (boxWidth - labelWidth) / 2, yPosition - 20);
-            contentStream.showText(labels[i]);
-            contentStream.endText();
-
-            // Value (larger)
-            contentStream.beginText();
-            contentStream.setFont(FONT_BOLD, 24);
-            float valueWidth = FONT_BOLD.getStringWidth(values[i]) / 1000 * 24;
-            contentStream.newLineAtOffset(boxX + (boxWidth - valueWidth) / 2, yPosition - 55);
-            contentStream.showText(values[i]);
-            contentStream.endText();
-        }
-
-        return yPosition - boxHeight;
-    }
-
-    private float createStudentSection(PDPageContentStream contentStream, float pageWidth, float yPosition)
-            throws IOException {
-
-        // Student Information title
-        contentStream.beginText();
-        contentStream.setFont(FONT_BOLD, 14);
-        contentStream.newLineAtOffset(MARGIN, yPosition);
-        contentStream.showText("Student Information:");
-        contentStream.endText();
-
-        // Simple underline
-        contentStream.setLineWidth(1f);
-        contentStream.moveTo(MARGIN, yPosition - 5);
-        contentStream.lineTo(MARGIN + 140, yPosition - 5);
-        contentStream.stroke();
-
-        yPosition -= 30;
-
-        // Name section
-        contentStream.beginText();
-        contentStream.setFont(FONT_BOLD, 12);
-        contentStream.newLineAtOffset(MARGIN, yPosition);
-        contentStream.showText("Name:");
-        contentStream.endText();
-
-        contentStream.setLineWidth(1f);
-        contentStream.moveTo(MARGIN + 50, yPosition - 3);
-        contentStream.lineTo(pageWidth - 150, yPosition - 3);
-        contentStream.stroke();
-
-        // Reference section
-        contentStream.beginText();
-        contentStream.setFont(FONT_BOLD, 12);
-        contentStream.newLineAtOffset(pageWidth - 130, yPosition);
-        contentStream.showText("Ref:");
-        contentStream.endText();
-
-        contentStream.moveTo(pageWidth - 100, yPosition - 3);
-        contentStream.lineTo(pageWidth - MARGIN, yPosition - 3);
-        contentStream.stroke();
-
-        // Date section
-        contentStream.beginText();
-        contentStream.setFont(FONT_BOLD, 12);
-        contentStream.newLineAtOffset(MARGIN, yPosition - 30);
-        contentStream.showText("Date:");
-        contentStream.endText();
-
-        contentStream.moveTo(MARGIN + 50, yPosition - 33);
-        contentStream.lineTo(MARGIN + 150, yPosition - 33);
-        contentStream.stroke();
-
-        return yPosition - 40;
-    }
-
-    private void createInstructions(PDPageContentStream contentStream, float pageWidth, float yPosition)
-            throws IOException {
-
-        // Instructions header
-        contentStream.beginText();
-        contentStream.setFont(FONT_BOLD, 14);
-        contentStream.newLineAtOffset(MARGIN, yPosition);
-        contentStream.showText("Instructions:");
-        contentStream.endText();
-
-        // Simple underline
-        contentStream.setLineWidth(1f);
-        contentStream.moveTo(MARGIN, yPosition - 5);
-        contentStream.lineTo(MARGIN + 90, yPosition - 5);
-        contentStream.stroke();
-
-        // Instructions list
-        String[] instructions = {
-                "• Write your name and reference number clearly in the spaces above",
-                "• Read all questions carefully before answering",
-                "• Answer ALL questions in the spaces provided",
-                "• Show all working where applicable",
-                "• Mobile phones and calculators are not permitted unless stated"
+        String[] headers = {"Questions", "Total Marks", "Time Allowed"};
+        String[] values = {
+                String.valueOf(questions.size()),
+                String.valueOf(totalMarks),
+                estimatedMinutes + " min"
         };
 
-        float instructionY = yPosition - 25;
-        for (String instruction : instructions) {
-            contentStream.beginText();
-            contentStream.setFont(FONT_NORMAL, 10);
-            contentStream.newLineAtOffset(MARGIN, instructionY);
-            contentStream.showText(instruction);
-            contentStream.endText();
-            instructionY -= 15;
+        for (int i = 0; i < 3; i++) {
+            float x = startX + i * (boxWidth + spacing);
+            drawBoxWithHeader(cs, x, y, boxWidth, boxHeight, headers[i], values[i]);
         }
+        y -= (boxHeight + 60);
+
+        // Table Header
+        float tableX = MARGIN;
+        float tableWidth = pageWidth - 2 * MARGIN;
+        float rowHeight = 22;
+        drawTableHeader(cs, tableX, y, tableWidth, rowHeight, "Question", "Marks");
+        y -= rowHeight;
+
+        // Question Rows
+        for (Question q : questions) {
+            // Simplified style: "paper 2 June 2020 Q6a"
+            String ref = String.format("paper %s %s %s Q%s",
+                    q.getPaperIdentifier().replaceAll("[^0-9]", ""), // paper number
+                    QuestionUtils.getFormattedMonth(q),
+                    q.getYear(),
+                    FormattingUtils.formatOriginalQuestionNumber(q.getQuestionNumber()));
+
+            drawTableRow(cs, tableX, y, tableWidth, rowHeight, ref,
+                    "/ " + q.getMarks(), true);
+            y -= rowHeight;
+        }
+
+        // Total Row
+        drawTableRow(cs, tableX, y, tableWidth, rowHeight, "Total", "/ " + totalMarks, true);
+    }
+
+    // === Helper Drawing Methods ===
+
+    private void centerText(PDPageContentStream cs, String text, float pageWidth, float y) throws IOException {
+        float textWidth = FONT_BOLD.getStringWidth(text) / 1000 * 16;
+        cs.newLineAtOffset((pageWidth - textWidth) / 2, y);
+        cs.showText(text);
+    }
+
+    private void drawLineWithLabel(PDPageContentStream cs, float x, float y,
+                                   String label, float width) throws IOException {
+        cs.beginText();
+        cs.setFont(FONT_BOLD, 12);
+        cs.newLineAtOffset(x, y);
+        cs.showText(label);
+        cs.endText();
+
+        cs.moveTo(x + 50, y - 3);
+        cs.lineTo(x + width, y - 3);
+        cs.stroke();
+    }
+
+    private void drawBoxWithHeader(PDPageContentStream cs,
+                                   float x, float y,
+                                   float width, float height,
+                                   String header, String value) throws IOException {
+        cs.addRect(x, y - height, width, height);
+        cs.stroke();
+
+        // Header
+        cs.beginText();
+        cs.setFont(FONT_BOLD, 12);
+        float headerWidth = FONT_BOLD.getStringWidth(header) / 1000 * 12;
+        cs.newLineAtOffset(x + (width - headerWidth) / 2, y - 18);
+        cs.showText(header);
+        cs.endText();
+
+        // Value
+        cs.beginText();
+        cs.setFont(FONT_BOLD, 20);
+        float valWidth = FONT_BOLD.getStringWidth(value) / 1000 * 20;
+        cs.newLineAtOffset(x + (width - valWidth) / 2, y - 47);
+        cs.showText(value);
+        cs.endText();
+    }
+
+    private void drawTableHeader(PDPageContentStream cs,
+                                 float x, float y,
+                                 float width, float height,
+                                 String col1, String col2) throws IOException {
+        float col2Width = 80;
+        float col1Width = width - col2Width;
+
+        cs.addRect(x, y - height, width, height);
+        cs.stroke();
+
+        cs.beginText();
+        cs.setFont(FONT_BOLD, 12);
+        cs.newLineAtOffset(x + 5, y - 15);
+        cs.showText(col1);
+        cs.endText();
+
+        cs.beginText();
+        cs.setFont(FONT_BOLD, 12);
+        cs.newLineAtOffset(x + col1Width + 5, y - 15);
+        cs.showText(col2);
+        cs.endText();
+    }
+
+    private void drawTableRow(PDPageContentStream cs,
+                              float x, float y,
+                              float width, float height,
+                              String col1, String col2,
+                              boolean bold) throws IOException {
+        float col2Width = 80;
+        float col1Width = width - col2Width;
+
+        cs.addRect(x, y - height, width, height);
+        cs.stroke();
+
+        PDFont font = bold ? FONT_BOLD : FONT_NORMAL;
+
+        cs.beginText();
+        cs.setFont(font, 10);
+        cs.newLineAtOffset(x + 5, y - 15);
+        cs.showText(col1);
+        cs.endText();
+
+        cs.beginText();
+        cs.setFont(font, 10);
+        cs.newLineAtOffset(x + col1Width + 5, y - 15);
+        cs.showText(col2);
+        cs.endText();
     }
 }

@@ -1,6 +1,7 @@
 package com.ppgenarator.core;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,17 +25,21 @@ public class Generator {
 
     public void run() {
 
-        //download past papers
+        // download past papers
         // downloadPastPapers();
 
         // Process past papers if needed
         processAllPastPapers();
 
-        // Compile topics from existing processed data (simplified individual topic structure)
-        compileTopics();
+        // Compile topics from existing processed data (simplified individual topic
+        // structure)
+        // compileTopics();
 
         // Create comprehensive topic analysis
-        createTopicAnalysis();
+        // createTopicAnalysis();
+
+        // Create unit mocks (Theme 1-4)
+        createUnitMocks();
     }
 
     /**
@@ -206,6 +211,19 @@ public class Generator {
         topicCompiler.compileByTopic();
 
         System.out.println("Individual topic compilation completed.");
+    }
+
+    private void createUnitMocks() {
+        System.out.println("Creating unit mocks (Theme 1-4)...");
+        File output = new File(Configuration.OUTPUT_DIRECTORY);
+
+        TopicCompiler compiler = new TopicCompiler(output, output);
+        try {
+            compiler.setTargetMarksPerMock(80);
+            compiler.compileByUnit();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     /**

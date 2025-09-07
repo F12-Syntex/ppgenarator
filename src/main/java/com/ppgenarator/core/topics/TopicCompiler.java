@@ -114,6 +114,45 @@ public class TopicCompiler {
         }
     }
 
+    public void compileByUnit() throws Exception {
+        List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
+        Map<String, List<Question>> questionsByUnit = groupQuestionsByUnit(allQuestions);
+
+        for (Map.Entry<String, List<Question>> entry : questionsByUnit.entrySet()) {
+            String unit = entry.getKey();
+            List<Question> questions = removeDuplicateQuestions(entry.getValue());
+
+            if (questions.isEmpty())
+                continue;
+
+            // Create directory for this unit
+            String unitDirName = unit.toLowerCase().replace(" ", "_");
+            File unitDir = new File(outputDir, unitDirName);
+            unitDir.mkdirs();
+
+            System.out.println("Creating unit mock for " + unit + " with " + questions.size() + " questions");
+
+            // Create merged PDF and mocks
+            pdfMerger.createCombinedQuestionsPdf(questions, unitDir);
+            singleMockGenerator.createSingleMock(questions, unitDir, "a level", unit);
+        }
+    }
+
+    private Map<String, List<Question>> groupQuestionsByUnit(List<Question> allQuestions) {
+        Map<String, List<Question>> unitQuestions = new HashMap<>();
+
+        for (Question question : allQuestions) {
+            if (question.getTopics() == null || question.getTopics().length == 0)
+                continue;
+
+            for (String topic : question.getTopics()) {
+                String theme = TopicConstants.getThemeFromTopic(topic);
+                unitQuestions.computeIfAbsent(theme, k -> new ArrayList<>()).add(question);
+            }
+        }
+        return unitQuestions;
+    }
+
     private void processIndividualTopic(String topic, List<Question> topicQuestions, File outputDir,
             String qualification) throws IOException {
 
@@ -131,7 +170,8 @@ public class TopicCompiler {
             topicDir.mkdirs();
         }
 
-        System.out.println("Creating single mock for " + topic + " with " + uniqueTopicQuestions.size() + " unique questions");
+        System.out.println(
+                "Creating single mock for " + topic + " with " + uniqueTopicQuestions.size() + " unique questions");
 
         // Create all questions with markscheme PDF
         pdfMerger.createCombinedQuestionsPdf(uniqueTopicQuestions, topicDir);
