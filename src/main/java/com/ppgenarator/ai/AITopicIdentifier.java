@@ -12,7 +12,7 @@ import com.ppgenerator.types.Question;
 
 public class AITopicIdentifier {
 
-    private static final ChatModel OPENAI_MODEL = ChatModel.GPT_4_1_MINI;
+    private static final ChatModel OPENAI_MODEL = ChatModel.GPT_5_NANO_2025_08_07;
     private final String[] topics;
 
     public AITopicIdentifier(String[] topics) {
@@ -30,7 +30,7 @@ public class AITopicIdentifier {
         try {
             StringBuilder batchPrompt = createImprovedBatchPrompt(questions);
 
-            OpenAiService openAI = new OpenAiService(OPENAI_MODEL, 0.2); // Slightly higher temperature for consistency
+            OpenAiService openAI = new OpenAiService(OPENAI_MODEL, 1); // Slightly higher temperature for consistency
             String response = openAI.query(batchPrompt.toString());
 
             System.out.println("AI Response for batch:\n" + response + "\n");

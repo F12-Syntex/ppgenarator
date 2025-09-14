@@ -4,23 +4,20 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.ppgenarator.ai.TopicConstants;
 import com.ppgenarator.utils.FileUtils;
+import com.ppgenerator.types.Qualification;
 import com.ppgenerator.types.Question;
 
 public class TopicCompiler {
 
     private File metadataDir;
     private File outputDir;
-    private int targetMarksPerMock = 20;
-    private int mockTime = 25;
-    private int minimumQ1To5MockTests = 0; // Disabled for single mock structure
-    private boolean createQ1To5OnlyMocks = false; // Disabled for single mock structure
-
     private QuestionLoader questionLoader;
     private SingleMockGenerator singleMockGenerator;
     private PdfMerger pdfMerger;
@@ -35,10 +32,6 @@ public class TopicCompiler {
         this.questionLoader = new QuestionLoader();
         this.singleMockGenerator = new SingleMockGenerator();
         this.pdfMerger = new PdfMerger();
-    }
-
-    public void setTargetMarksPerMock(int targetMarksPerMock) {
-        this.targetMarksPerMock = targetMarksPerMock;
     }
 
     public void compileByTopic() {
@@ -56,6 +49,67 @@ public class TopicCompiler {
         } catch (Exception e) {
             System.err.println("Error compiling questions by topic: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * New unit mocks logic – uses paper/qualification mapping:
+     * Theme 1: AS Paper 1
+     * Theme 2: AS Paper 2
+     * Theme 3: A Level Paper 1
+     * Theme 4: A Level Paper 2
+     */
+    public void compileByUnit() throws Exception {
+        List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
+
+        Map<String, List<Question>> unitQuestions = new LinkedHashMap<>();
+        for (Question q : allQuestions) {
+            String paperId = "unknown";
+            if (q.getQuestion() != null) {
+                File parent = q.getQuestion().getParentFile();
+                if (parent != null) {
+                    paperId = parent.getName().toLowerCase(); // "1", "2", "3"
+                }
+            }
+
+            if (q.getQualification() == Qualification.AS && paperId.equals("1")) {
+                unitQuestions.computeIfAbsent("Theme 1", k -> new ArrayList<>()).add(q);
+            } else if (q.getQualification() == Qualification.AS && paperId.equals("2")) {
+                unitQuestions.computeIfAbsent("Theme 2", k -> new ArrayList<>()).add(q);
+            } else if (q.getQualification() == Qualification.A_LEVEL && paperId.equals("1")) {
+                unitQuestions.computeIfAbsent("Theme 3", k -> new ArrayList<>()).add(q);
+            } else if (q.getQualification() == Qualification.A_LEVEL && paperId.equals("2")) {
+                unitQuestions.computeIfAbsent("Theme 4", k -> new ArrayList<>()).add(q);
+            }
+        }
+
+        for (Map.Entry<String, List<Question>> entry : unitQuestions.entrySet()) {
+            String unit = entry.getKey();
+            List<Question> questions = removeDuplicateQuestions(entry.getValue());
+
+            if (questions.isEmpty())
+                continue;
+
+            File unitBaseDir = new File(outputDir, "unit mocks"
+                    + File.separator
+                    + unit.toLowerCase().replace(" ", ""));
+            unitBaseDir.mkdirs();
+
+            System.out.println("Creating " + unit + " mocks with " + questions.size() + " questions");
+
+            // Combined PDF of all questions for reference
+            pdfMerger.createCombinedQuestionsPdf(questions, unitBaseDir);
+
+            // Create 3 different mocks per unit
+            for (int i = 1; i <= 2; i++) {
+                File mockDir = new File(unitBaseDir, "mock" + i);
+                mockDir.mkdirs();
+
+                SingleMockGenerator generator = new SingleMockGenerator();
+                generator.createSingleMock(questions, mockDir, "a level", unit);
+
+                System.out.println("Mock " + i + " for " + unit + " saved to " + mockDir.getAbsolutePath());
+            }
         }
     }
 
@@ -98,105 +152,42 @@ public class TopicCompiler {
 
     private void processQualificationTopics(Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic)
             throws IOException {
-
         for (String qualification : questionsByQualificationAndTopic.keySet()) {
             Map<String, List<Question>> topicMap = questionsByQualificationAndTopic.get(qualification);
 
             for (String topic : topicMap.keySet()) {
                 List<Question> topicQuestions = topicMap.get(topic);
 
-                System.out.println("Processing topic: " + topic
-                        + " in qualification: " + qualification
-                        + " with " + topicQuestions.size() + " questions");
-
                 processIndividualTopic(topic, topicQuestions, outputDir, qualification);
             }
         }
     }
 
-    public void compileByUnit() throws Exception {
-        List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
-        Map<String, List<Question>> questionsByUnit = groupQuestionsByUnit(allQuestions);
-
-        for (Map.Entry<String, List<Question>> entry : questionsByUnit.entrySet()) {
-            String unit = entry.getKey();
-            List<Question> questions = removeDuplicateQuestions(entry.getValue());
-
-            if (questions.isEmpty())
-                continue;
-
-            // Create directory for this unit
-            String unitDirName = unit.toLowerCase().replace(" ", "_");
-            File unitDir = new File(outputDir, unitDirName);
-            unitDir.mkdirs();
-
-            System.out.println("Creating unit mock for " + unit + " with " + questions.size() + " questions");
-
-            // Create merged PDF and mocks
-            pdfMerger.createCombinedQuestionsPdf(questions, unitDir);
-            singleMockGenerator.createSingleMock(questions, unitDir, "a level", unit);
-        }
-    }
-
-    private Map<String, List<Question>> groupQuestionsByUnit(List<Question> allQuestions) {
-        Map<String, List<Question>> unitQuestions = new HashMap<>();
-
-        for (Question question : allQuestions) {
-            if (question.getTopics() == null || question.getTopics().length == 0)
-                continue;
-
-            for (String topic : question.getTopics()) {
-                String theme = TopicConstants.getThemeFromTopic(topic);
-                unitQuestions.computeIfAbsent(theme, k -> new ArrayList<>()).add(question);
-            }
-        }
-        return unitQuestions;
-    }
-
     private void processIndividualTopic(String topic, List<Question> topicQuestions, File outputDir,
             String qualification) throws IOException {
-
         List<Question> uniqueTopicQuestions = removeDuplicateQuestions(topicQuestions);
-
-        if (uniqueTopicQuestions.isEmpty()) {
-            System.out.println("No unique questions found for topic: " + topic);
+        if (uniqueTopicQuestions.isEmpty())
             return;
-        }
 
-        // Create directory for this topic directly in output directory
         String topicDirName = FileUtils.sanitizeFileName(topic);
         File topicDir = new File(outputDir, topicDirName);
-        if (!topicDir.exists()) {
+        if (!topicDir.exists())
             topicDir.mkdirs();
-        }
 
-        System.out.println(
-                "Creating single mock for " + topic + " with " + uniqueTopicQuestions.size() + " unique questions");
-
-        // Create all questions with markscheme PDF
         pdfMerger.createCombinedQuestionsPdf(uniqueTopicQuestions, topicDir);
 
-        // Create single mock test targeting specific time periods
         singleMockGenerator.createSingleMock(uniqueTopicQuestions, topicDir, qualification, topic);
-
-        System.out.println("Completed processing for " + topic + " (" + qualification + ")");
     }
 
     private List<Question> removeDuplicateQuestions(List<Question> questions) {
         Map<String, Question> uniqueQuestions = new HashMap<>();
-
         for (Question question : questions) {
             String identifier = getQuestionIdentifier(question);
             if (!uniqueQuestions.containsKey(identifier)) {
                 uniqueQuestions.put(identifier, question);
             }
         }
-
-        List<Question> result = new ArrayList<>(uniqueQuestions.values());
-        if (questions.size() != result.size()) {
-            System.out.println("Removed " + (questions.size() - result.size()) + " duplicate questions");
-        }
-        return result;
+        return new ArrayList<>(uniqueQuestions.values());
     }
 
     private String getQuestionIdentifier(Question question) {

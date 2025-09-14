@@ -36,7 +36,7 @@ public class CoverPageCreator {
             document.addPage(page);
 
             try (PDPageContentStream cs = new PDPageContentStream(document, page)) {
-                drawCoverPage(cs, page, questions, totalMarks, estimatedMinutes, topic);
+                drawCoverPage(cs, page, questions, totalMarks, estimatedMinutes, topic, mockTestNumber);
             }
 
             document.save(coverPageFile);
@@ -50,11 +50,12 @@ public class CoverPageCreator {
                                List<Question> questions,
                                int totalMarks,
                                int estimatedMinutes,
-                               String unitOrTopic) throws IOException {
+                               String unitOrTopic,
+                               int mockTestNumber) throws IOException {
 
         float pageWidth = page.getMediaBox().getWidth();
         float pageHeight = page.getMediaBox().getHeight();
-        float y = pageHeight - 60;
+        float y = pageHeight - 80;
 
         // Border
         cs.setLineWidth(1.2f);
@@ -63,27 +64,25 @@ public class CoverPageCreator {
                 pageHeight - (2 * MARGIN) + 40);
         cs.stroke();
 
-        // Title
+        // Title BEST TUTORS (centered big)
         cs.beginText();
-        cs.setFont(FONT_BOLD, 28);
-        centerText(cs, "BEST TUTORS", pageWidth, y);
+        centerText(cs, "BEST TUTORS", FONT_BOLD, 28, pageWidth, y);
         cs.endText();
-        y -= 50;
+        y -= 60;
 
-        // Name, Ref, Date lines (no "Student Information")
+        // Name / Ref / Date lines
         drawLineWithLabel(cs, MARGIN, y, "Name:", 250);
         drawLineWithLabel(cs, pageWidth - 200, y, "Ref:", 120);
         y -= 40;
 
         drawLineWithLabel(cs, MARGIN, y, "Date:", 200);
-        y -= 60;
+        y -= 80;
 
-        // Mock Title (just "Theme X Mock Test")
+        // Mock Title
         cs.beginText();
-        cs.setFont(FONT_BOLD, 16);
-        centerText(cs, unitOrTopic + " Mock Test", pageWidth, y);
+        centerText(cs, unitOrTopic + " Mock", FONT_BOLD, 18, pageWidth, y);
         cs.endText();
-        y -= 50;
+        y -= 40;
 
         // Stats Boxes
         float boxWidth = 140, boxHeight = 70, spacing = 40;
@@ -100,7 +99,7 @@ public class CoverPageCreator {
             float x = startX + i * (boxWidth + spacing);
             drawBoxWithHeader(cs, x, y, boxWidth, boxHeight, headers[i], values[i]);
         }
-        y -= (boxHeight + 60);
+        y -= (boxHeight + 80);
 
         // Table Header
         float tableX = MARGIN;
@@ -111,9 +110,8 @@ public class CoverPageCreator {
 
         // Question Rows
         for (Question q : questions) {
-            // Simplified style: "paper 2 June 2020 Q6a"
             String ref = String.format("paper %s %s %s Q%s",
-                    q.getPaperIdentifier().replaceAll("[^0-9]", ""), // paper number
+                    q.getPaperIdentifier().replaceAll("[^0-9]", ""),
                     QuestionUtils.getFormattedMonth(q),
                     q.getYear(),
                     FormattingUtils.formatOriginalQuestionNumber(q.getQuestionNumber()));
@@ -129,9 +127,16 @@ public class CoverPageCreator {
 
     // === Helper Drawing Methods ===
 
-    private void centerText(PDPageContentStream cs, String text, float pageWidth, float y) throws IOException {
-        float textWidth = FONT_BOLD.getStringWidth(text) / 1000 * 16;
-        cs.newLineAtOffset((pageWidth - textWidth) / 2, y);
+    private void centerText(PDPageContentStream cs,
+                            String text,
+                            PDFont font,
+                            float fontSize,
+                            float pageWidth,
+                            float y) throws IOException {
+        float textWidth = font.getStringWidth(text) / 1000 * fontSize;
+        float startX = (pageWidth - textWidth) / 2;
+        cs.setFont(font, fontSize);
+        cs.setTextMatrix(1, 0, 0, 1, startX, y); // absolute coordinates
         cs.showText(text);
     }
 

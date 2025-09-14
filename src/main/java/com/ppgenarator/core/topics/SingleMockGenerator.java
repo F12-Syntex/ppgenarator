@@ -2,21 +2,16 @@ package com.ppgenarator.core.topics;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 
 import com.ppgenarator.utils.QuestionUtils;
 import com.ppgenerator.types.Question;
 
 public class SingleMockGenerator {
 
-    // Target time periods in minutes
-    private static final int[] TARGET_TIMES = {25, 30, 35, 40};
-    private static final int TIME_TOLERANCE = 2; // Allow +/- 2 minutes
+    // Fixed exam lengths (in minutes)
+    private static final int[] TARGET_TIMES = { 60, 90 };
+    private static final int TIME_TOLERANCE = 15; // +/- tolerance for fitting
 
     private CoverPageCreator coverPageCreator;
     private MockTestPdfCreator mockTestPdfCreator;
@@ -28,281 +23,195 @@ public class SingleMockGenerator {
         this.markschemeCreator = new MarkschemeCreator();
     }
 
-    /**
-     * Calculate the estimated time for a question based on marks and type
-     * Non-context based: 1 mark = 2 minutes
-     * Context based: 1 mark = 2.5 minutes
-     */
-    private int calculateQuestionTime(Question question) {
-        int marks = question.getMarks();
-        
-        // Check if it's a context-based question (typically Q6 or Paper 3 Q1/Q2)
-        if (QuestionUtils.isEssayStyleQuestion(question.getQuestionNumber()) || 
-            QuestionUtils.isContextBasedQuestion(question)) {
+    /** Calculate estimated time for a question. */
+    private int calculateQuestionTime(Question q) {
+        int marks = q.getMarks();
+        if (QuestionUtils.isEssayStyleQuestion(q.getQuestionNumber())
+                || QuestionUtils.isContextBasedQuestion(q)) {
             return (int) Math.round(marks * 2.5);
         } else {
-            return marks * 2;
+            return marks * 1;
         }
     }
 
-    /**
-     * Calculate the total estimated time for a list of questions
-     */
-    private int calculateTotalTime(List<Question> questions) {
-        int totalMinutes = 0;
-        for (Question question : questions) {
-            totalMinutes += calculateQuestionTime(question);
-        }
-        return totalMinutes;
+    private int calculateTotalTime(List<Question> qs) {
+        return qs.stream().mapToInt(this::calculateQuestionTime).sum();
+    }
+
+    private int calculateTotalMarks(List<Question> qs) {
+        return qs.stream().mapToInt(Question::getMarks).sum();
     }
 
     /**
-     * Find the best target time that the calculated time can fit into
+     * Randomized selector for a target paper length, prioritising short non-essay
+     * questions.
      */
-    private int findBestTargetTime(int calculatedTime) {
-        // Find the smallest target time that accommodates the calculated time
-        for (int targetTime : TARGET_TIMES) {
-            if (calculatedTime <= targetTime + TIME_TOLERANCE) {
-                return targetTime;
-            }
-        }
-        // If it exceeds all targets, use the largest target
-        return TARGET_TIMES[TARGET_TIMES.length - 1];
-    }
+    private List<Question> selectRandomForTarget(List<Question> pool, int targetTime) {
+        if (pool.isEmpty())
+            return Collections.emptyList();
 
-    /**
-     * Create a single mock test for the given topic, targeting specific time periods
-     */
-    public void createSingleMock(List<Question> questions, File topicDir, String qualification, String topic) 
-            throws IOException {
-        
-        // Remove duplicates
-        List<Question> uniqueQuestions = removeDuplicates(questions);
-        
-        if (uniqueQuestions.isEmpty()) {
-            System.out.println("No questions available for " + topic + " - skipping mock creation");
-            return;
-        }
-
-        // Calculate total available time
-        int totalAvailableTime = calculateTotalTime(uniqueQuestions);
-        
-        System.out.println("Total available time for " + topic + ": " + totalAvailableTime + " minutes");
-        
-        // If we have very limited questions, create a mock with all of them
-        if (totalAvailableTime <= TARGET_TIMES[0] + TIME_TOLERANCE) {
-            System.out.println("Limited questions for " + topic + " - creating mock with all available questions");
-            createMockWithQuestions(uniqueQuestions, topicDir, qualification, topic);
-            return;
-        }
-
-        // Select optimal questions for the best time target
-        List<Question> selectedQuestions = selectOptimalQuestions(uniqueQuestions);
-        
-        if (selectedQuestions.isEmpty()) {
-            // Fallback: create mock with all questions if selection fails
-            System.out.println("Question selection failed - using all available questions");
-            selectedQuestions = uniqueQuestions;
-        }
-
-        createMockWithQuestions(selectedQuestions, topicDir, qualification, topic);
-    }
-
-    /**
-     * Select questions to optimally fit one of the target time periods
-     */
-    private List<Question> selectOptimalQuestions(List<Question> availableQuestions) {
-        List<Question> bestSelection = new ArrayList<>();
-        int bestScore = Integer.MAX_VALUE;
-        int bestTargetTime = TARGET_TIMES[0];
-
-        // Try to find the best combination for each target time
-        for (int targetTime : TARGET_TIMES) {
-            List<Question> candidate = selectQuestionsForTarget(new ArrayList<>(availableQuestions), targetTime);
-            int candidateTime = calculateTotalTime(candidate);
-            
-            // Calculate how close we are to the target (prefer being under target)
-            int score = Math.abs(candidateTime - targetTime);
-            if (candidateTime > targetTime) {
-                score += 5; // Penalty for going over
-            }
-            
-            if (score < bestScore && !candidate.isEmpty()) {
-                bestScore = score;
-                bestSelection = candidate;
-                bestTargetTime = targetTime;
-            }
-        }
-
-        int actualTime = calculateTotalTime(bestSelection);
-        System.out.println("Selected " + bestSelection.size() + " questions with " + actualTime + 
-                         " minutes (targeting " + bestTargetTime + " minutes)");
-
-        return bestSelection;
-    }
-
-    /**
-     * Select questions to fit a specific target time
-     */
-    private List<Question> selectQuestionsForTarget(List<Question> availableQuestions, int targetTime) {
-        List<Question> selected = new ArrayList<>();
-        int currentTime = 0;
-        
-        // Separate questions by type for better selection
-        List<Question> shortQuestions = new ArrayList<>();
-        List<Question> essayQuestions = new ArrayList<>();
-        
-        for (Question q : availableQuestions) {
-            if (QuestionUtils.isEssayStyleQuestion(q.getQuestionNumber())) {
-                essayQuestions.add(q);
+        // Split the pool
+        List<Question> shortQs = new ArrayList<>();
+        List<Question> longQs = new ArrayList<>();
+        for (Question q : pool) {
+            boolean isEssay = QuestionUtils.isEssayStyleQuestion(q.getQuestionNumber())
+                    || QuestionUtils.isContextBasedQuestion(q);
+            if (!isEssay && q.getMarks() <= 10) {
+                shortQs.add(q);
             } else {
-                shortQuestions.add(q);
+                longQs.add(q);
             }
         }
-        
-        // Shuffle for variety
-        Collections.shuffle(shortQuestions, new Random());
-        Collections.shuffle(essayQuestions, new Random());
-        
-        // Sort by time to optimize selection
-        shortQuestions.sort((a, b) -> Integer.compare(calculateQuestionTime(a), calculateQuestionTime(b)));
-        essayQuestions.sort((a, b) -> Integer.compare(calculateQuestionTime(a), calculateQuestionTime(b)));
-        
-        // First, try to add one essay question if it fits
-        if (!essayQuestions.isEmpty()) {
-            for (Question essayQ : essayQuestions) {
-                int essayTime = calculateQuestionTime(essayQ);
-                if (essayTime <= targetTime - TIME_TOLERANCE) {
-                    selected.add(essayQ);
-                    currentTime += essayTime;
-                    essayQuestions.remove(essayQ);
+
+        List<Question> best = new ArrayList<>();
+        int closestDiff = Integer.MAX_VALUE;
+        Random rnd = new Random();
+
+        for (int attempt = 0; attempt < 50; attempt++) {
+            // Shuffle each group
+            Collections.shuffle(shortQs, rnd);
+            Collections.shuffle(longQs, rnd);
+
+            List<Question> selected = new ArrayList<>();
+            int timeUsed = 0;
+
+            // First try to fill with short questions
+            for (Question q : shortQs) {
+                int qt = calculateQuestionTime(q);
+                if (timeUsed + qt <= targetTime + TIME_TOLERANCE) {
+                    selected.add(q);
+                    timeUsed += qt;
+                }
+                if (timeUsed >= targetTime - TIME_TOLERANCE)
                     break;
+            }
+
+            // Fill remaining with long ones if needed
+            if (timeUsed < targetTime - TIME_TOLERANCE) {
+                for (Question q : longQs) {
+                    int qt = calculateQuestionTime(q);
+                    if (timeUsed + qt <= targetTime + TIME_TOLERANCE) {
+                        selected.add(q);
+                        timeUsed += qt;
+                    }
+                    if (timeUsed >= targetTime - TIME_TOLERANCE)
+                        break;
                 }
             }
-        }
-        
-        // Fill remaining time with short questions
-        for (int i = 0; i < shortQuestions.size(); i++) {
-            Question question = shortQuestions.get(i);
-            int questionTime = calculateQuestionTime(question);
-            
-            if (currentTime + questionTime <= targetTime + TIME_TOLERANCE) {
-                selected.add(question);
-                currentTime += questionTime;
-                shortQuestions.remove(i);
-                i--; // Adjust index after removal
-                
-                // Stop if we're close enough to target
-                if (currentTime >= targetTime - TIME_TOLERANCE) {
-                    break;
-                }
+
+            int diff = Math.abs(timeUsed - targetTime);
+            if (diff < closestDiff) {
+                closestDiff = diff;
+                best = selected;
             }
+
+            if (closestDiff == 0)
+                break; // perfect fit found
         }
-        
-        return selected;
+
+        return best;
     }
 
-    /**
-     * Create the actual mock test files
-     */
-    private void createMockWithQuestions(List<Question> questions, File topicDir, String qualification, String topic) 
+    /** Main: create single mock. */
+    public void createSingleMock(List<Question> questions, File topicDir, String qualification, String topic)
             throws IOException {
-        
-        int totalMarks = questions.stream().mapToInt(Question::getMarks).sum();
-        int actualTime = calculateTotalTime(questions);
-        int targetTime = findBestTargetTime(actualTime);
-        
-        System.out.println("Creating mock for " + topic + ": " + questions.size() + " questions, " + 
-                         totalMarks + " marks, " + actualTime + " minutes (using " + targetTime + " minute template)");
 
-        // Create cover page directly in topic directory
-        File coverPageFile = coverPageCreator.createCoverPage(1, questions, totalMarks, targetTime, 
-                                                            qualification, topic, topicDir);
+        List<Question> unique = removeDuplicates(questions);
+        if (unique.isEmpty()) {
+            System.out.println("No questions in " + topic);
+            return;
+        }
 
-        // Create mock.pdf directly in topic directory
-        createMockPdf(questions, topicDir, coverPageFile);
+        //remove all 10+ markers
+        unique.removeIf(q -> q.getMarks() > 10);
 
-        // Create markscheme.pdf directly in topic directory
-        createMarkscheme(questions, topicDir);
+        int totalTime = calculateTotalTime(unique);
+        System.out.println("Available " + topic + ": " + totalTime + " min total");
+
+        // randomly choose whether this mock will be 60 or 90 minutes
+        int chosenTarget = (Math.random() < 0.5) ? 60 : 90;
+
+        List<Question> selected = selectRandomForTarget(unique, chosenTarget);
+        if (selected.isEmpty()) {
+            selected = unique;
+            System.out.println("Fallback → using all");
+        }
+
+        createMockWithQuestions(selected, topicDir, qualification, topic, chosenTarget);
     }
 
-    /**
-     * Create the mock.pdf file
-     */
-    private void createMockPdf(List<Question> questions, File topicDir, File coverPageFile) throws IOException {
-        // Use existing MockTestPdfCreator but modify output to be directly in topic directory
+    /** Write PDFs with randomized selection. */
+    private void createMockWithQuestions(List<Question> qs, File topicDir, String qualification, String topic,
+            int templateTime)
+            throws IOException {
+
+        int marks = calculateTotalMarks(qs);
+        int time = calculateTotalTime(qs);
+
+        System.out.println("Build mock: " + qs.size() + " qs, " +
+                marks + " marks, " + time + " min (template " +
+                templateTime + " min)");
+
+        File cover = coverPageCreator.createCoverPage(
+                1,
+                qs,
+                marks,
+                templateTime, // Paper is labelled as exactly 60 or 90
+                qualification,
+                topic,
+                topicDir);
+
+        createMockPdf(qs, topicDir, cover);
+        createMarkscheme(qs, topicDir);
+    }
+
+    private void createMockPdf(List<Question> qs, File topicDir, File coverPageFile) throws IOException {
         MockTestPdfCreator pdfCreator = new MockTestPdfCreator();
-        
-        // Temporarily create a subdirectory structure that the existing code expects
-        File tempMockDir = new File(topicDir, "temp_mock");
-        tempMockDir.mkdirs();
-        
-        // Create the mock using existing infrastructure
-        pdfCreator.createMockTestPdfs(questions, tempMockDir, coverPageFile);
-        
-        // Move the created mock.pdf to the topic directory
-        File createdMock = new File(tempMockDir, "mock.pdf");
+        File temp = new File(topicDir, "temp_mock");
+        temp.mkdirs();
+
+        pdfCreator.createMockTestPdfs(qs, temp, coverPageFile);
+
+        File created = new File(temp, "mock.pdf");
         File finalMock = new File(topicDir, "mock.pdf");
-        
-        if (createdMock.exists()) {
-            if (finalMock.exists()) {
+        if (created.exists()) {
+            if (finalMock.exists())
                 finalMock.delete();
-            }
-            createdMock.renameTo(finalMock);
+            created.renameTo(finalMock);
             System.out.println("Created mock.pdf: " + finalMock.getAbsolutePath());
         }
-        
-        // Clean up temporary directory
-        if (tempMockDir.exists()) {
-            File[] tempFiles = tempMockDir.listFiles();
-            if (tempFiles != null) {
-                for (File file : tempFiles) {
-                    file.delete();
-                }
+
+        for (File f : Objects.requireNonNull(temp.listFiles()))
+            f.delete();
+        temp.delete();
+    }
+
+    private void createMarkscheme(List<Question> qs, File topicDir) throws IOException {
+        File ms = markschemeCreator.createMockTestMarkscheme(qs, topicDir);
+        if (ms != null) {
+            File finalMS = new File(topicDir, "markscheme.pdf");
+            if (!ms.equals(finalMS)) {
+                if (finalMS.exists())
+                    finalMS.delete();
+                ms.renameTo(finalMS);
             }
-            tempMockDir.delete();
+            System.out.println("Created markscheme.pdf: " + finalMS.getAbsolutePath());
         }
     }
 
-    /**
-     * Create the markscheme.pdf file
-     */
-    private void createMarkscheme(List<Question> questions, File topicDir) throws IOException {
-        // Create markscheme directly in topic directory
-        File markschemeFile = markschemeCreator.createMockTestMarkscheme(questions, topicDir);
-        
-        if (markschemeFile != null) {
-            // Rename to markscheme.pdf if it has a different name
-            File finalMarkscheme = new File(topicDir, "markscheme.pdf");
-            if (!markschemeFile.equals(finalMarkscheme)) {
-                if (finalMarkscheme.exists()) {
-                    finalMarkscheme.delete();
-                }
-                markschemeFile.renameTo(finalMarkscheme);
-            }
-            System.out.println("Created markscheme.pdf: " + finalMarkscheme.getAbsolutePath());
-        }
-    }
-
-    /**
-     * Remove duplicate questions based on file hash or question identifier
-     */
-    private List<Question> removeDuplicates(List<Question> questions) {
-        List<Question> uniqueQuestions = new ArrayList<>();
-        Set<String> seenHashes = new HashSet<>();
-
-        for (Question question : questions) {
-            String identifier = QuestionUtils.getQuestionIdentifier(question);
-            if (!seenHashes.contains(identifier)) {
-                seenHashes.add(identifier);
-                uniqueQuestions.add(question);
+    /** Deduplication. */
+    private List<Question> removeDuplicates(List<Question> qs) {
+        List<Question> unique = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (Question q : qs) {
+            String id = QuestionUtils.getQuestionIdentifier(q);
+            if (seen.add(id)) {
+                unique.add(q);
             }
         }
-
-        if (questions.size() != uniqueQuestions.size()) {
-            System.out.println("Removed " + (questions.size() - uniqueQuestions.size()) + " duplicate questions");
+        if (qs.size() != unique.size()) {
+            System.out.println("Removed " + (qs.size() - unique.size()) + " duplicates");
         }
-
-        return uniqueQuestions;
+        return unique;
     }
 }

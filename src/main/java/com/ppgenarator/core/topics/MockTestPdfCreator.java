@@ -72,17 +72,20 @@ public class MockTestPdfCreator {
 
         for (Question question : questions) {
             if (QuestionUtils.isEssayStyleQuestion(question.getQuestionNumber())) {
-                List<File> extractFilesForQuestion = findExtractFiles(question);
-                extractFiles.addAll(extractFilesForQuestion);
+                List<File> foundExtracts = findExtractFiles(question);
+                if (!foundExtracts.isEmpty()) {
+                    // only take the first extract encountered
+                    extractFiles.add(foundExtracts.get(0));
+                    break;
+                }
             }
         }
-
         return extractFiles;
     }
 
     private List<File> findExtractFiles(Question question) {
         List<File> extractFiles = new ArrayList<>();
-        
+
         if (question.getQuestion() == null || !question.getQuestion().exists()) {
             return extractFiles;
         }
@@ -115,7 +118,8 @@ public class MockTestPdfCreator {
             }
 
         } catch (Exception e) {
-            System.err.println("Error finding extract files for question " + question.getQuestionNumber() + ": " + e.getMessage());
+            System.err.println(
+                    "Error finding extract files for question " + question.getQuestionNumber() + ": " + e.getMessage());
         }
 
         return extractFiles;

@@ -29,7 +29,7 @@ public class Generator {
         // downloadPastPapers();
 
         // Process past papers if needed
-        processAllPastPapers();
+        // processAllPastPapers();
 
         // Compile topics from existing processed data (simplified individual topic
         // structure)
@@ -219,7 +219,6 @@ public class Generator {
 
         TopicCompiler compiler = new TopicCompiler(output, output);
         try {
-            compiler.setTargetMarksPerMock(80);
             compiler.compileByUnit();
         } catch (Exception e) {
             e.printStackTrace();
@@ -242,10 +241,10 @@ public class Generator {
         TopicCompiler topicCompiler = new TopicCompiler(output, output);
 
         // Generate topic overview
-        topicCompiler.generateTopicOverview();
+        // topicCompiler.generateTopicOverview();
 
         // Generate analysis reports
-        topicCompiler.createTopicAnalysisReport();
+        // topicCompiler.createTopicAnalysisReport();
 
         System.out.println("Topic analysis completed.");
     }
