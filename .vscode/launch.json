@@ -4,6 +4,13 @@
     "configurations": [
         {
             "type": "java",
+            "name": "NotesDownloader",
+            "request": "launch",
+            "mainClass": "com.ppgenarator.core.NotesDownloader",
+            "projectName": "ppgenarator"
+        },
+        {
+            "type": "java",
             "name": "TopicCompiler",
             "request": "launch",
             "mainClass": "com.ppgenarator.core.Generator",

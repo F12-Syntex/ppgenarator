@@ -18,9 +18,10 @@ public class TopicCompiler {
 
     private File metadataDir;
     private File outputDir;
-    private QuestionLoader questionLoader;
+    public QuestionLoader questionLoader;
     private SingleMockGenerator singleMockGenerator;
     private PdfMerger pdfMerger;
+    private UnitMockGenerator unitMockGenerator;
 
     public TopicCompiler(File metadataDir, File parentOutputDir) {
         this.metadataDir = metadataDir;
@@ -32,6 +33,7 @@ public class TopicCompiler {
         this.questionLoader = new QuestionLoader();
         this.singleMockGenerator = new SingleMockGenerator();
         this.pdfMerger = new PdfMerger();
+        this.unitMockGenerator = new UnitMockGenerator();
     }
 
     public void compileByTopic() {
@@ -53,63 +55,41 @@ public class TopicCompiler {
     }
 
     /**
-     * New unit mocks logic – uses paper/qualification mapping:
-     * Theme 1: AS Paper 1
-     * Theme 2: AS Paper 2
-     * Theme 3: A Level Paper 1
-     * Theme 4: A Level Paper 2
+     * New unit mocks logic - creates special unit tests with one topic from each major section
      */
     public void compileByUnit() throws Exception {
         List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
-
-        Map<String, List<Question>> unitQuestions = new LinkedHashMap<>();
+        
+        // Group questions by their topics for theme-based selection
+        Map<String, List<Question>> questionsByTopic = new HashMap<>();
         for (Question q : allQuestions) {
-            String paperId = "unknown";
-            if (q.getQuestion() != null) {
-                File parent = q.getQuestion().getParentFile();
-                if (parent != null) {
-                    paperId = parent.getName().toLowerCase(); // "1", "2", "3"
+            if (q.getTopics() != null) {
+                for (String topic : q.getTopics()) {
+                    questionsByTopic.computeIfAbsent(topic, k -> new ArrayList<>()).add(q);
                 }
-            }
-
-            if (q.getQualification() == Qualification.AS && paperId.equals("1")) {
-                unitQuestions.computeIfAbsent("Theme 1", k -> new ArrayList<>()).add(q);
-            } else if (q.getQualification() == Qualification.AS && paperId.equals("2")) {
-                unitQuestions.computeIfAbsent("Theme 2", k -> new ArrayList<>()).add(q);
-            } else if (q.getQualification() == Qualification.A_LEVEL && paperId.equals("1")) {
-                unitQuestions.computeIfAbsent("Theme 3", k -> new ArrayList<>()).add(q);
-            } else if (q.getQualification() == Qualification.A_LEVEL && paperId.equals("2")) {
-                unitQuestions.computeIfAbsent("Theme 4", k -> new ArrayList<>()).add(q);
             }
         }
 
-        for (Map.Entry<String, List<Question>> entry : unitQuestions.entrySet()) {
-            String unit = entry.getKey();
-            List<Question> questions = removeDuplicateQuestions(entry.getValue());
+        // Create unit mocks for each theme
+        for (int themeNum = 1; themeNum <= 4; themeNum++) {
+            createThemeUnitMocks(themeNum, questionsByTopic);
+        }
+    }
 
-            if (questions.isEmpty())
-                continue;
+    private void createThemeUnitMocks(int themeNum, Map<String, List<Question>> questionsByTopic) throws IOException {
+        String themeName = "Theme " + themeNum;
+        File unitBaseDir = new File(outputDir, "unit mocks" + File.separator + "theme" + themeNum);
+        unitBaseDir.mkdirs();
 
-            File unitBaseDir = new File(outputDir, "unit mocks"
-                    + File.separator
-                    + unit.toLowerCase().replace(" ", ""));
-            unitBaseDir.mkdirs();
+        System.out.println("\n=== Creating Unit Mocks for " + themeName + " ===");
 
-            System.out.println("Creating " + unit + " mocks with " + questions.size() + " questions");
+        // Create 3 different mocks for this theme
+        for (int mockNum = 1; mockNum <= 3; mockNum++) {
+            File mockDir = new File(unitBaseDir, "mock" + mockNum);
+            mockDir.mkdirs();
 
-            // Combined PDF of all questions for reference
-            pdfMerger.createCombinedQuestionsPdf(questions, unitBaseDir);
-
-            // Create 3 different mocks per unit
-            for (int i = 1; i <= 2; i++) {
-                File mockDir = new File(unitBaseDir, "mock" + i);
-                mockDir.mkdirs();
-
-                SingleMockGenerator generator = new SingleMockGenerator();
-                generator.createSingleMock(questions, mockDir, "a level", unit);
-
-                System.out.println("Mock " + i + " for " + unit + " saved to " + mockDir.getAbsolutePath());
-            }
+            // Generate special unit mock with topic selection
+            unitMockGenerator.createSpecialUnitMock(themeNum, questionsByTopic, mockDir, mockNum);
         }
     }
 
@@ -225,16 +205,12 @@ public class TopicCompiler {
         }
     }
 
-    /**
-     * Generate a comprehensive overview of all topics
-     */
     public void generateTopicOverview() {
         try {
             List<Question> allQuestions = questionLoader.loadQuestionsFromJsonFiles(metadataDir);
             Map<String, Map<String, List<Question>>> questionsByQualificationAndTopic = groupQuestionsByQualificationAndTopic(
                     allQuestions);
 
-            // Create overview directory
             File overviewDir = new File(outputDir, "topic_overview");
             overviewDir.mkdirs();
 

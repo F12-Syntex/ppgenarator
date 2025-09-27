@@ -36,10 +36,10 @@ public class Generator {
         // compileTopics();
 
         // Create comprehensive topic analysis
-        // createTopicAnalysis();
+        createTopicAnalysis();
 
         // Create unit mocks (Theme 1-4)
-        createUnitMocks();
+        // createUnitMocks();
     }
 
     /**
@@ -241,10 +241,10 @@ public class Generator {
         TopicCompiler topicCompiler = new TopicCompiler(output, output);
 
         // Generate topic overview
-        // topicCompiler.generateTopicOverview();
+        topicCompiler.generateTopicOverview();
 
         // Generate analysis reports
-        // topicCompiler.createTopicAnalysisReport();
+        topicCompiler.createTopicAnalysisReport();
 
         System.out.println("Topic analysis completed.");
     }
